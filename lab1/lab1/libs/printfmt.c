@@ -13,7 +13,7 @@
  * The integer may be positive or negative,
  * so that -E_NO_MEM and E_NO_MEM are equivalent.
  * */
-
+//错误码与报错语句对应
 static const char * const error_string[MAXERROR + 1] = {
     [0]                        NULL,
     [E_UNSPECIFIED]            "unspecified error",
@@ -33,6 +33,7 @@ static const char * const error_string[MAXERROR + 1] = {
  * @width:         maximum number of digits, if the actual width is less than @width, use @padc instead
  * @padc:        character that padded on the left if the actual width is less than @width
  * */
+//按指定的进制输出数字，支持宽度和填充，putch是输出单个字符的函数指针
 static void
 printnum(void (*putch)(int, void*), void *putdat,
         unsigned long long num, unsigned base, int width, int padc) {
@@ -56,6 +57,7 @@ printnum(void (*putch)(int, void*), void *putdat,
  * @ap:            a varargs list pointer
  * @lflag:        determines the size of the vararg that @ap points to
  * */
+//从参数列表中获取无符号整数，支持不同长度
 static unsigned long long
 getuint(va_list *ap, int lflag) {
     if (lflag >= 2) {
@@ -74,6 +76,7 @@ getuint(va_list *ap, int lflag) {
  * @ap:            a varargs list pointer
  * @lflag:        determines the size of the vararg that @ap points to
  * */
+//获取有符号整数
 static long long
 getint(va_list *ap, int lflag) {
     if (lflag >= 2) {
@@ -93,6 +96,7 @@ getint(va_list *ap, int lflag) {
  * @putdat:        used by @putch function
  * @fmt:        the format string to use
  * */
+//格式化输出
 void
 printfmt(void (*putch)(int, void*), void *putdat, const char *fmt, ...) {
     va_list ap;
@@ -113,6 +117,7 @@ printfmt(void (*putch)(int, void*), void *putdat, const char *fmt, ...) {
  * Call this function if you are already dealing with a va_list.
  * Or you probably want printfmt() instead.
  * */
+//处理格式字符串%d,%s,%x,%e
 void
 vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap) {
     register const char *p;
@@ -276,6 +281,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap) 
 }
 
 /* sprintbuf is used to save enough information of a buffer */
+//字符串缓冲区输出，buf指向当前写入位置，ebuf指向缓冲区末尾，cnt记录写入字符
 struct sprintbuf {
     char *buf;            // address pointer points to the first unused memory
     char *ebuf;            // points the end of the buffer
@@ -287,6 +293,7 @@ struct sprintbuf {
  * @ch:            the character will be printed
  * @b:            the buffer to place the character @ch
  * */
+//向缓冲区写入字符，并更新计数
 static void
 sprintputch(int ch, struct sprintbuf *b) {
     b->cnt ++;
@@ -301,6 +308,7 @@ sprintputch(int ch, struct sprintbuf *b) {
  * @size:        the size of buffer, including the trailing null space
  * @fmt:        the format string to use
  * */
+//
 int
 snprintf(char *str, size_t size, const char *fmt, ...) {
     va_list ap;

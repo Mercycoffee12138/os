@@ -8,6 +8,7 @@
  * cputch - writes a single character @c to stdout, and it will
  * increace the value of counter pointed by @cnt.
  * */
+//输出一个字符到控制台，并统计字符的数量
 static void cputch(int c, int *cnt) {
     cons_putc(c);
     (*cnt)++;
@@ -22,6 +23,7 @@ static void cputch(int c, int *cnt) {
  * Call this function if you are already dealing with a va_list.
  * Or you probably want cprintf() instead.
  * */
+//输出字符串到控制台，支持可变参数，返回的是字符数，内部调用
 int vcprintf(const char *fmt, va_list ap) {
     int cnt = 0;
     vprintfmt((void *)cputch, &cnt, fmt, ap);
@@ -34,6 +36,7 @@ int vcprintf(const char *fmt, va_list ap) {
  * The return value is the number of characters which would be
  * written to stdout.
  * */
+//输出字符串到控制台，类似prinitf，外部调用接口
 int cprintf(const char *fmt, ...) {
     va_list ap;
     int cnt;
@@ -44,12 +47,14 @@ int cprintf(const char *fmt, ...) {
 }
 
 /* cputchar - writes a single character to stdout */
+//输出一个字符串到控制台
 void cputchar(int c) { cons_putc(c); }
 
 /* *
  * cputs- writes the string pointed by @str to stdout and
  * appends a newline character.
  * */
+//输出一个字符串到控制台并自动换行
 int cputs(const char *str) {
     int cnt = 0;
     char c;
@@ -61,6 +66,7 @@ int cputs(const char *str) {
 }
 
 /* getchar - reads a single non-zero character from stdin */
+//从控制台读取一个非零字符，返回读取到的字符
 int getchar(void) {
     int c;
     while ((c = cons_getc()) == 0) /* do nothing */;

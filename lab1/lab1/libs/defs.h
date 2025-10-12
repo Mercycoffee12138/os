@@ -92,3 +92,4 @@ typedef size_t ppn_t;
 
 #endif /* !__LIBS_DEFS_H__ */
 
+//定义文件：空指针，函数属性，bool，定长整型，整数的最大最小宏，地址对齐，指针类型，结构体
