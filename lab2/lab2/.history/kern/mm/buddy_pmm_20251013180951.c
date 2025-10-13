@@ -567,5 +567,5 @@ const struct pmm_manager buddy_pmm_manager = {
     .alloc_pages = buddy_alloc_pages,
     .free_pages = buddy_free_pages,
     .nr_free_pages = buddy_nr_free_pages,
-    .check = buddy_system_check,  // 使用新的测试函数
+    .check = buddy_check,
 };

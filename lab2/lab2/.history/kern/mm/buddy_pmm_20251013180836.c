@@ -74,21 +74,9 @@ static struct Page *get_buddy(struct Page *page, int order) {
     return pages + buddy_idx;
 }
 
-// 显示当前内存块分布情况
-static void show_buddy_array(int start, int end) {
-    cprintf("当前内存块分布:\n");
-    for (int i = start; i <= end && i <= MAX_ORDER; i++) {
-        cprintf("Order %d (size %d页): %d块\n", 
-               i, 1 << i, free_lists[i].nr_free);
-    }
-    cprintf("总空闲页数: %d\n", nr_free);
-    cprintf("------------------------\n");
-}
-
 static void
 buddy_init(void) {
     // 初始化所有空闲链表
-    nr_free = 0;
     for (int i = 0; i <= MAX_ORDER; i++) {
         list_init(&(free_lists[i].free_list));
         free_lists[i].nr_free = 0;
@@ -128,7 +116,6 @@ buddy_init_memmap(struct Page *base, size_t n) {
         // 添加到相应的空闲链表
         list_add(&(free_lists[order].free_list), &(current_base->page_link));
         free_lists[order].nr_free++;
-        nr_free += block_size;
         
         // 移动到下一个块
         current_base += block_size;
@@ -158,7 +145,6 @@ buddy_alloc_pages(size_t n) {
             // 从空闲链表中移除
             list_del(&(page->page_link));
             free_lists[current_order].nr_free--;
-            nr_free -= (1 << current_order);
             ClearPageProperty(page);
             
             // 如果块太大，需要分裂
@@ -173,7 +159,6 @@ buddy_alloc_pages(size_t n) {
                 // 将右半部分加入到对应的空闲链表
                 list_add(&(free_lists[current_order].free_list), &(buddy->page_link));
                 free_lists[current_order].nr_free++;
-                nr_free += (1 << current_order);
             }
             
             // 设置分配的页的属性
@@ -220,7 +205,6 @@ buddy_free_pages(struct Page *base, size_t n) {
         // 从空闲链表中移除伙伴
         list_del(&(buddy->page_link));
         free_lists[current_order].nr_free--;
-        nr_free -= (1 << current_order);
         ClearPageProperty(buddy);
         
         // 合并：确保current_block指向地址较小的块
@@ -236,7 +220,6 @@ buddy_free_pages(struct Page *base, size_t n) {
     // 将最终的块加入到对应的空闲链表
     list_add(&(free_lists[current_order].free_list), &(current_block->page_link));
     free_lists[current_order].nr_free++;
-    nr_free += (1 << current_order);
 }
 
 static size_t
@@ -422,143 +405,6 @@ buddy_check(void) {
     cprintf("=== Buddy System Check Completed Successfully ===\n");
 }
 
-// 简单分配释放测试
-static void
-buddy_system_check_easy_alloc_and_free_condition(void) {
-    cprintf("CHECK OUR EASY ALLOC CONDITION:\n");
-    cprintf("当前总的空闲块的数量为：%d\n", nr_free);
-    struct Page *p0, *p1, *p2;
-    p0 = p1 = p2 = NULL;
-
-    cprintf("首先,p0请求10页\n");
-    p0 = alloc_pages(10);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("然后,p1请求10页\n");
-    p1 = alloc_pages(10);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("最后,p2请求10页\n");
-    p2 = alloc_pages(10);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("p0的虚拟地址为:0x%016lx.\n", (uintptr_t)p0);
-    cprintf("p1的虚拟地址为:0x%016lx.\n", (uintptr_t)p1);
-    cprintf("p2的虚拟地址为:0x%016lx.\n", (uintptr_t)p2);
-
-    assert(p0 != p1 && p0 != p2 && p1 != p2);
-    assert(page_ref(p0) == 0 && page_ref(p1) == 0 && page_ref(p2) == 0);
-
-    assert(page2pa(p0) < npage * PGSIZE);
-    assert(page2pa(p1) < npage * PGSIZE);
-    assert(page2pa(p2) < npage * PGSIZE);
-
-    cprintf("CHECK OUR EASY FREE CONDITION:\n");
-    cprintf("释放p0...\n");
-    free_pages(p0, 10);
-    cprintf("释放p0后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("释放p1...\n");
-    free_pages(p1, 10);
-    cprintf("释放p1后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("释放p2...\n");
-    free_pages(p2, 10);
-    cprintf("释放p2后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-}
-
-// 复杂分配释放测试
-static void
-buddy_system_check_difficult_alloc_and_free_condition(void) {
-    cprintf("CHECK OUR DIFFICULT ALLOC CONDITION:\n");
-    cprintf("当前总的空闲块的数量为：%d\n", nr_free);
-    struct Page *p0, *p1, *p2;
-    p0 = p1 = p2 = NULL;
-
-    cprintf("首先,p0请求10页\n");
-    p0 = alloc_pages(10);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("然后,p1请求50页\n");
-    p1 = alloc_pages(50);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("最后,p2请求100页\n");
-    p2 = alloc_pages(100);
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("p0的虚拟地址为:0x%016lx.\n", (uintptr_t)p0);
-    cprintf("p1的虚拟地址为:0x%016lx.\n", (uintptr_t)p1);
-    cprintf("p2的虚拟地址为:0x%016lx.\n", (uintptr_t)p2);
-
-    assert(p0 != p1 && p0 != p2 && p1 != p2);
-    assert(page_ref(p0) == 0 && page_ref(p1) == 0 && page_ref(p2) == 0);
-
-    assert(page2pa(p0) < npage * PGSIZE);
-    assert(page2pa(p1) < npage * PGSIZE);
-    assert(page2pa(p2) < npage * PGSIZE);
-
-    cprintf("CHECK OUR DIFFICULT FREE CONDITION:\n");
-    cprintf("释放p0...\n");
-    free_pages(p0, 10);
-    cprintf("释放p0后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("释放p1...\n");
-    free_pages(p1, 50);
-    cprintf("释放p1后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    cprintf("释放p2...\n");
-    free_pages(p2, 100);
-    cprintf("释放p2后,总空闲块数目为:%d\n", nr_free); 
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-}
-
-// 最小单元测试
-static void buddy_system_check_min_alloc_and_free_condition(void) {
-    cprintf("CHECK MIN UNIT ALLOC/FREE:\n");
-    struct Page *p3 = alloc_pages(1);
-    cprintf("分配p3之后(1页)\n");
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-
-    // 全部回收
-    free_pages(p3, 1);
-    cprintf("释放p3之后\n");
-    show_buddy_array(0, MAX_BUDDY_ORDER);
-}
-
-// 最大单元测试
-static void buddy_system_check_max_alloc_and_free_condition(void) {
-    cprintf("CHECK MAX UNIT ALLOC/FREE:\n");
-    struct Page *p3 = alloc_pages(1 << MAX_ORDER);
-    if (p3 != NULL) {
-        cprintf("分配p3之后(%d页)\n", 1 << MAX_ORDER);
-        show_buddy_array(0, MAX_BUDDY_ORDER);
-
-        // 全部回收
-        free_pages(p3, 1 << MAX_ORDER);
-        cprintf("释放p3之后\n");
-        show_buddy_array(0, MAX_BUDDY_ORDER);
-    } else {
-        cprintf("最大单元分配失败(内存不足)\n");
-    }
-}
-
-// 综合测试函数
-static void
-buddy_system_check(void) {
-    cprintf("BEGIN TO TEST OUR BUDDY SYSTEM!\n");
-    buddy_system_check_easy_alloc_and_free_condition();
-    buddy_system_check_min_alloc_and_free_condition();
-    buddy_system_check_max_alloc_and_free_condition();
-    buddy_system_check_difficult_alloc_and_free_condition();
-    cprintf("BUDDY SYSTEM TEST COMPLETED!\n");
-}
-
 // PMM管理器结构体
 const struct pmm_manager buddy_pmm_manager = {
     .name = "buddy_pmm_manager",
@@ -567,5 +413,5 @@ const struct pmm_manager buddy_pmm_manager = {
     .alloc_pages = buddy_alloc_pages,
     .free_pages = buddy_free_pages,
     .nr_free_pages = buddy_nr_free_pages,
-    .check = buddy_system_check,  // 使用新的测试函数
+    .check = buddy_check,
 };
