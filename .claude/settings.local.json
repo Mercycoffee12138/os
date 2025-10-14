@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat \"D:\\study\\os\\lab2\\lab2\\kern\\mm\\slub_pmm.c\")",
+      "Bash(cat \"D:\\study\\os\\lab2\\lab2\\kern\\mm\\slub_pmm.h\")",
+      "Bash(cat \"d:\\study\\os\\lab2\\lab2\\kern\\mm\\slub_pmm.c\")",
+      "Bash(cat \"d:\\study\\os\\lab2\\lab2\\kern\\mm\\slub_pmm.h\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
