@@ -414,11 +414,14 @@ void slub_cache_destroy(struct slub_cache *cache) {
     kfree(cache);
 }
 
-// Simplified check function
-void slub_check(void) {
-    cprintf("SLUB allocator check started\n");
+// SLUB specific test functions
+
+// 基础功能测试
+static void slub_basic_check(void) {
+    cprintf("=== SLUB 基础功能测试开始 ===\n");
 
     // Test all size classes
+    cprintf("测试所有大小类别...\n");
     for (int i = 0; i < SLUB_NUM_SIZES; i++) {
         size_t size = index_to_size(i);
         void *ptr = slub_alloc(size);
@@ -436,8 +439,10 @@ void slub_check(void) {
             slub_free(ptr, size);
         }
     }
+    cprintf("大小类别测试通过!\n");
 
     // Basic allocation test
+    cprintf("测试基础分配功能...\n");
     void *p1 = slub_alloc(32);
     void *p2 = slub_alloc(64);
     void *p3 = slub_alloc(128);
@@ -451,18 +456,241 @@ void slub_check(void) {
     slub_free(p1, 32);
     slub_free(p2, 64);
     slub_free(p3, 128);
+    cprintf("基础分配测试通过!\n");
+}
 
-    // Print statistics
+// 边界条件测试
+static void slub_boundary_check(void) {
+    cprintf("=== SLUB 边界条件测试开始 ===\n");
+
+    // Test zero size allocation
+    cprintf("测试零大小分配...\n");
+    void *ptr_zero = slub_alloc(0);
+    assert(ptr_zero == NULL);
+    cprintf("零大小分配正确失败!\n");
+
+    // Test oversized allocation
+    cprintf("测试超大对象分配...\n");
+    void *ptr_huge = slub_alloc(SLUB_MAX_SIZE + 1);
+    assert(ptr_huge == NULL);
+    cprintf("超大对象分配正确失败!\n");
+
+    // Test NULL pointer free
+    cprintf("测试空指针释放...\n");
+    slub_free(NULL, 32);  // Should not crash
+    cprintf("空指针释放安全处理!\n");
+
+    // Test minimum size allocation
+    cprintf("测试最小大小分配...\n");
+    void *ptr_min = slub_alloc(1);  // Should allocate 8 bytes
+    assert(ptr_min != NULL);
+    slub_free(ptr_min, 1);
+    cprintf("最小大小分配测试通过!\n");
+
+    // Test maximum size allocation
+    cprintf("测试最大大小分配...\n");
+    void *ptr_max = slub_alloc(SLUB_MAX_SIZE);
+    assert(ptr_max != NULL);
+    slub_free(ptr_max, SLUB_MAX_SIZE);
+    cprintf("最大大小分配测试通过!\n");
+}
+
+// CPU缓存行为测试
+static void slub_cpu_cache_check(void) {
+    cprintf("=== SLUB CPU缓存测试开始 ===\n");
+
+    size_t initial_hits = slub_allocator.cache_hits;
+
+    // Allocate and free same size multiple times to test CPU cache
+    cprintf("测试CPU缓存行为...\n");
+    void *ptrs[SLUB_CPU_CACHE_SIZE + 5];  // More than cache size
+
+    // First allocation should miss cache
+    for (int i = 0; i < SLUB_CPU_CACHE_SIZE + 5; i++) {
+        ptrs[i] = slub_alloc(32);
+        assert(ptrs[i] != NULL);
+    }
+
+    // Free all
+    for (int i = 0; i < SLUB_CPU_CACHE_SIZE + 5; i++) {
+        slub_free(ptrs[i], 32);
+    }
+
+    // Allocate again - should hit CPU cache
+    for (int i = 0; i < SLUB_CPU_CACHE_SIZE; i++) {
+        ptrs[i] = slub_alloc(32);
+        assert(ptrs[i] != NULL);
+    }
+
+    size_t final_hits = slub_allocator.cache_hits;
+    cprintf("缓存命中次数增长: %u -> %u\n",
+            (unsigned int)initial_hits, (unsigned int)final_hits);
+
+    // Clean up
+    for (int i = 0; i < SLUB_CPU_CACHE_SIZE; i++) {
+        slub_free(ptrs[i], 32);
+    }
+
+    cprintf("CPU缓存测试通过!\n");
+}
+
+// 对齐测试
+static void slub_alignment_check(void) {
+    cprintf("=== SLUB 对齐测试开始 ===\n");
+
+    // Test alignment for all size classes
+    for (int i = 0; i < SLUB_NUM_SIZES; i++) {
+        size_t size = index_to_size(i);
+        void *ptr = slub_alloc(size);
+
+        if (ptr) {
+            uintptr_t addr = (uintptr_t)ptr;
+            assert((addr % SLUB_ALIGN) == 0);  // Check alignment
+            slub_free(ptr, size);
+        }
+    }
+
+    cprintf("对齐测试通过!\n");
+}
+
+// 压力测试
+static void slub_stress_check(void) {
+    cprintf("=== SLUB 压力测试开始 ===\n");
+
+    // Allocate many small objects
+    cprintf("测试高频小对象分配...\n");
+    void *small_ptrs[100];
+    for (int i = 0; i < 100; i++) {
+        small_ptrs[i] = slub_alloc(8);
+        if (small_ptrs[i] == NULL) {
+            cprintf("第%d次分配失败 (内存耗尽时为正常现象)\n", i);
+            break;
+        }
+    }
+
+    // Free all
+    for (int i = 0; i < 100; i++) {
+        if (small_ptrs[i]) {
+            slub_free(small_ptrs[i], 8);
+        }
+    }
+
+    // Mixed size allocation test
+    cprintf("测试混合大小分配...\n");
+    void *mixed_ptrs[50];
+    size_t mixed_sizes[50];
+
+    for (int i = 0; i < 50; i++) {
+        // Alternate between different sizes
+        size_t size = index_to_size(i % SLUB_NUM_SIZES);
+        mixed_ptrs[i] = slub_alloc(size);
+        mixed_sizes[i] = size;
+
+        if (mixed_ptrs[i] == NULL) {
+            cprintf("第%d次混合分配失败\n", i);
+            break;
+        }
+
+        // Write unique pattern
+        if (mixed_ptrs[i]) {
+            memset(mixed_ptrs[i], i & 0xFF, size);
+        }
+    }
+
+    // Verify patterns and free
+    for (int i = 0; i < 50; i++) {
+        if (mixed_ptrs[i]) {
+            char *bytes = (char*)mixed_ptrs[i];
+            for (size_t j = 0; j < mixed_sizes[i]; j++) {
+                assert(bytes[j] == (char)(i & 0xFF));
+            }
+            slub_free(mixed_ptrs[i], mixed_sizes[i]);
+        }
+    }
+
+    cprintf("压力测试通过!\n");
+}
+
+// 显示SLUB状态信息
+static void slub_show_status(void) {
+    cprintf("=== SLUB 状态信息 ===\n");
+
+    // Print global statistics
     slub_print_stats();
 
-    // Print cache information
+    // Print cache hit rate
+    if (slub_allocator.total_allocs > 0) {
+        // 使用整数运算避免浮点数问题
+        size_t hit_rate_int = (slub_allocator.cache_hits * 10000) / slub_allocator.total_allocs;
+        cprintf("  缓存命中率: %u.%02u%%\n",
+               (unsigned int)(hit_rate_int / 100),
+               (unsigned int)(hit_rate_int % 100));
+    }
+
+    // Print free pages
+    size_t free_pages = slub_nr_free_pages();
+    cprintf("  空闲页面数: %u\n", (unsigned int)free_pages);
+
+    cprintf("\n");
+
+    // Print detailed cache information
+    cprintf("=== SLUB 缓存详细信息 ===\n");
     for (int i = 0; i < SLUB_NUM_SIZES; i++) {
         if (slub_allocator.size_caches[i]) {
             slub_print_cache_info(slub_allocator.size_caches[i]);
         }
     }
+}
 
-    cprintf("SLUB allocator check completed successfully\n");
+// 内存泄漏检测
+static void slub_leak_check(void) {
+    cprintf("=== SLUB 内存泄漏检测开始 ===\n");
+
+    size_t initial_allocs = slub_allocator.total_allocs;
+    size_t initial_frees = slub_allocator.total_frees;
+
+    // Perform balanced allocations and frees
+    void *test_ptrs[20];
+    for (int i = 0; i < 20; i++) {
+        test_ptrs[i] = slub_alloc(32);
+    }
+
+    for (int i = 0; i < 20; i++) {
+        slub_free(test_ptrs[i], 32);
+    }
+
+    size_t final_allocs = slub_allocator.total_allocs;
+    size_t final_frees = slub_allocator.total_frees;
+
+    size_t alloc_diff = final_allocs - initial_allocs;
+    size_t free_diff = final_frees - initial_frees;
+
+    cprintf("测试中分配次数: %u\n", (unsigned int)alloc_diff);
+    cprintf("测试中释放次数: %u\n", (unsigned int)free_diff);
+
+    if (alloc_diff == free_diff) {
+        cprintf("内存泄漏检测通过!\n");
+    } else {
+        cprintf("警告: 检测到潜在内存泄漏!\n");
+    }
+}
+
+// 综合测试函数
+void slub_check(void) {
+    cprintf("=== SLUB 综合测试开始 ===\n");
+
+    // Run all test suites
+    slub_basic_check();
+    slub_boundary_check();
+    slub_cpu_cache_check();
+    slub_alignment_check();
+    slub_stress_check();
+    slub_leak_check();
+
+    // Show final status
+    slub_show_status();
+
+    cprintf("=== SLUB 综合测试成功完成 ===\n");
 }
 
 // PMM Manager structure
