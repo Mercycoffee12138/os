@@ -171,7 +171,7 @@ best_fit_free_pages(struct Page *base, size_t n) {
     list_entry_t* le = list_prev(&(base->page_link));
     if (le != &free_list) {
         p = le2page(le, page_link);
-        /*LAB2 EXERCISE 2: 2313211*/ 
+        /*LAB2 EXERCISE 2: YOUR CODE*/ 
         // 编写代码
         // 1、判断前面的空闲页块是否与当前页块是连续的，如果是连续的，则将当前页块合并到前面的空闲页块中
         // 2、首先更新前一个空闲页块的大小，加上当前页块的大小
