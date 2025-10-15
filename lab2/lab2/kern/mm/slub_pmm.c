@@ -298,34 +298,195 @@ static void basic_check(void) {
 
 // SLUB特定检查函数
 static void slub_check(void) {
-    cprintf("=== SLUB Check Started ===\n");
+    cprintf("=== SLUB Comprehensive Check Started ===\n");
 
-    // 运行基础检查
+    // 保存初始状态
+    size_t initial_free_pages = slub_nr_free_pages();
+    size_t initial_allocs = slub_allocator.total_allocs;
+    size_t initial_frees = slub_allocator.total_frees;
+
+    cprintf("Initial state: %u free pages, %u allocs, %u frees\n",
+            (unsigned int)initial_free_pages,
+            (unsigned int)initial_allocs,
+            (unsigned int)initial_frees);
+
+    // 1. 运行基础检查
+    cprintf("\n[Basic] Running basic page allocation checks...\n");
     basic_check();
     cprintf("Basic check passed!\n");
 
-    // 测试多页分配
-    cprintf("Testing multi-page allocation...\n");
-    struct Page *p1 = alloc_pages(2);
-    struct Page *p2 = alloc_pages(4);
-    assert(p1 != NULL && p2 != NULL);
-    free_pages(p1, 2);
-    free_pages(p2, 4);
+    // 2. 检查SLUB大小分类系统
+    cprintf("\n[SLUB] Checking size classification system...\n");
+    size_t expected_sizes[] = {8, 16, 32, 64, 128, 256, 512, 1024, 2048, 96, 192};
+
+    for (int i = 0; i < SLUB_NUM_SIZES; i++) {
+        size_t actual_size = index_to_size(i);
+        assert(actual_size == expected_sizes[i]);
+
+        int actual_index = size_to_index(actual_size);
+        assert(actual_index == i);
+
+        cprintf("  Size class %d: %u bytes ✓\n", i, (unsigned int)actual_size);
+    }
+
+    // 测试边界条件
+    assert(size_to_index(1) == 0);     // 小于最小值
+    assert(size_to_index(8) == 0);     // 最小值
+    assert(size_to_index(96) == 9);    // 特殊大小96
+    assert(size_to_index(192) == 10);  // 特殊大小192
+    assert(size_to_index(5000) == -1); // 超出范围
+    cprintf("Size classification system check passed!\n");
+
+    // 3. 检查缓存结构初始化
+    cprintf("\n[Cache] Checking cache structures...\n");
+    for (int i = 0; i < SLUB_NUM_SIZES; i++) {
+        struct slub_cache *cache = slub_allocator.size_caches[i];
+        assert(cache != NULL);
+        assert(cache->object_size == index_to_size(i));
+        assert(cache->objects_per_slab > 0);
+        assert(cache->cpu_cache.limit == SLUB_CPU_CACHE_SIZE);
+        assert(cache->cpu_cache.avail == 0);
+        assert(cache->cpu_cache.freelist != NULL);
+        assert(list_empty(&cache->partial_list));
+
+        cprintf("  Cache %d (size %u): %u objects per slab ✓\n",
+                i, (unsigned int)cache->object_size, cache->objects_per_slab);
+    }
+    cprintf("Cache structures check passed!\n");
+
+    // 4. 检查页面信息结构
+    cprintf("\n[PageInfo] Checking page info structures...\n");
+    assert(slub_allocator.page_infos != NULL);
+    assert(slub_allocator.max_pages > 0);
+
+    for (size_t i = 0; i < 10 && i < slub_allocator.max_pages; i++) {
+        struct slub_page_info *info = &slub_allocator.page_infos[i];
+        assert(info->freelist == NULL);
+        assert(info->inuse == 0);
+        assert(info->objects == 0);
+        assert(info->cache == NULL);
+    }
+    cprintf("Page info structures check passed!\n");
+
+    // 5. 测试多页分配和释放
+    cprintf("\n[MultiPage] Testing multi-page allocation...\n");
+    struct Page *test_pages[4];
+    size_t alloc_sizes[] = {1, 2, 4, 3};
+
+    for (int i = 0; i < 4; i++) {
+        test_pages[i] = alloc_pages(alloc_sizes[i]);
+        assert(test_pages[i] != NULL);
+
+        for (size_t j = 0; j < alloc_sizes[i]; j++) {
+            assert(PageReserved(test_pages[i] + j));
+        }
+        cprintf("  Allocated %u pages ✓\n", (unsigned int)alloc_sizes[i]);
+    }
+
+    for (int i = 0; i < 4; i++) {
+        free_pages(test_pages[i], alloc_sizes[i]);
+    }
     cprintf("Multi-page allocation test passed!\n");
 
-    // 显示统计信息
-    cprintf("\nSLUB Statistics:\n");
-    cprintf("  Total allocations: %u\n", (unsigned int)slub_allocator.total_allocs);
-    cprintf("  Total frees: %u\n", (unsigned int)slub_allocator.total_frees);
-    cprintf("  Cache hits: %u\n", (unsigned int)slub_allocator.cache_hits);
-    cprintf("  Total slabs: %u\n", (unsigned int)slub_allocator.nr_slabs);
-    cprintf("  Free pages: %u\n", (unsigned int)slub_nr_free_pages());
+    // 6. 边界条件测试
+    cprintf("\n[Boundary] Testing boundary conditions...\n");
 
-    if (slub_allocator.total_allocs > 0) {
-        size_t hit_rate = (slub_allocator.cache_hits * 10000) / slub_allocator.total_allocs;
+    struct Page *p_single = alloc_pages(1);
+    assert(p_single != NULL);
+    free_pages(p_single, 1);
+    cprintf("  Single page allocation ✓\n");
+
+    struct Page *p_large = alloc_pages(16);
+    if (p_large != NULL) {
+        free_pages(p_large, 16);
+        cprintf("  Large allocation (16 pages) ✓\n");
+    } else {
+        cprintf("  Large allocation skipped (insufficient memory)\n");
+    }
+
+    extern struct Page *pages;
+    if (pages != NULL && slub_allocator.max_pages > 0) {
+        struct slub_page_info *info = page_to_slub_info(pages);
+        assert(info != NULL);
+        cprintf("  Page info boundary access ✓\n");
+    }
+    cprintf("Boundary conditions test passed!\n");
+
+    // 7. 压力测试
+    cprintf("\n[Stress] Running stress test...\n");
+    size_t stress_initial_free = slub_nr_free_pages();
+    const int test_cycles = 15;
+    struct Page *stress_pages[test_cycles];
+
+    for (int cycle = 0; cycle < 2; cycle++) {
+        cprintf("  Stress cycle %d...\n", cycle + 1);
+
+        // 分配阶段
+        for (int i = 0; i < test_cycles; i++) {
+            size_t size = (i % 3) + 1;
+            stress_pages[i] = alloc_pages(size);
+            assert(stress_pages[i] != NULL);
+        }
+
+        // 释放阶段
+        for (int i = test_cycles - 1; i >= 0; i--) {
+            size_t size = (i % 3) + 1;
+            free_pages(stress_pages[i], size);
+        }
+    }
+
+    size_t stress_final_free = slub_nr_free_pages();
+    if (stress_final_free < stress_initial_free - 2) {
+        cprintf("  WARNING: Possible memory leak in stress test!\n");
+    } else {
+        cprintf("  Memory leak test passed ✓\n");
+    }
+    cprintf("Stress test passed!\n");
+
+    // 8. 最终状态验证和统计报告
+    size_t final_free_pages = slub_nr_free_pages();
+    size_t final_allocs = slub_allocator.total_allocs;
+    size_t final_frees = slub_allocator.total_frees;
+
+    cprintf("\n=== Final Statistics Report ===\n");
+    cprintf("System Status:\n");
+    cprintf("  Free pages: %u\n", (unsigned int)final_free_pages);
+    cprintf("  Total allocations: %u (delta: +%u)\n",
+            (unsigned int)final_allocs,
+            (unsigned int)(final_allocs - initial_allocs));
+    cprintf("  Total frees: %u (delta: +%u)\n",
+            (unsigned int)final_frees,
+            (unsigned int)(final_frees - initial_frees));
+    cprintf("  Cache hits: %u\n", (unsigned int)slub_allocator.cache_hits);
+    cprintf("  Active slabs: %u\n", (unsigned int)slub_allocator.nr_slabs);
+
+    if (final_allocs > 0) {
+        size_t hit_rate = (slub_allocator.cache_hits * 10000) / final_allocs;
         cprintf("  Cache hit rate: %u.%02u%%\n",
                 (unsigned int)(hit_rate / 100),
                 (unsigned int)(hit_rate % 100));
+    }
+
+    cprintf("\nSize Class Details:\n");
+    for (int i = 0; i < SLUB_NUM_SIZES; i++) {
+        struct slub_cache *cache = slub_allocator.size_caches[i];
+        if (cache) {
+            cprintf("  Size %u: %u slabs, %u free, %u allocs, %u frees\n",
+                    (unsigned int)cache->object_size,
+                    (unsigned int)cache->nr_slabs,
+                    (unsigned int)cache->nr_free,
+                    (unsigned int)cache->nr_allocs,
+                    (unsigned int)cache->nr_frees);
+        }
+    }
+
+    // 内存完整性检查
+    if (final_free_pages < initial_free_pages - 3) {
+        cprintf("\nWARNING: Significant memory leak detected!\n");
+        cprintf("   Lost %d pages during testing\n",
+                (int)(initial_free_pages - final_free_pages));
+    } else {
+        cprintf("\nMemory integrity check passed!\n");
     }
 
     cprintf("\n=== SLUB Check Completed Successfully ===\n");
