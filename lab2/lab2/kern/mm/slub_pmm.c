@@ -22,7 +22,7 @@
 #define SLUB_ALIGN          8       // 默认对齐大小
 #define SLUB_SHIFT_LOW      3       // log2(SLUB_MIN_SIZE)
 #define SLUB_SHIFT_HIGH     12      // log2(SLUB_MAX_SIZE)
-#define SLUB_NUM_SIZES      10      // 大小类别数量
+#define SLUB_NUM_SIZES      11      // 大小类别数量
 #define SLUB_CPU_CACHE_SIZE 16      // 每CPU缓存容量
 
 // 页到内核虚拟地址转换宏
@@ -85,14 +85,17 @@ static void *static_alloc(size_t size) {
     if (heap_used + size > sizeof(static_heap))
         return NULL;
     void *ptr = &static_heap[heap_used];
-    heap_used = (heap_used + size + 7) & ~7;  // 8字节对齐
+    heap_used = ((heap_used + size + 7) / 8) * 8;  // 8字节对齐
     return ptr;
 }
 
 // 内联函数：大小到索引的转换
 static inline int size_to_index(size_t size) {
     if (size <= SLUB_MIN_SIZE) return 0;
-    if (size > SLUB_MAX_SIZE) return -1;
+    if (size > SLUB_MAX_SIZE && size != 96 && size != 192) return -1;
+
+    if (size == 96) return 9;  // 特殊处理 96B
+    if (size == 192) return 10; // 特殊处理 192B
 
     int shift = 0;
     size_t temp = size - 1;
@@ -106,6 +109,8 @@ static inline int size_to_index(size_t size) {
 // 内联函数：索引到大小的转换
 static inline size_t index_to_size(int index) {
     if (index < 0 || index >= SLUB_NUM_SIZES) return 0;
+    if (index == 9) return 96;  // 特殊处理 96B
+    if (index == 10) return 192; // 特殊处理 192B
     return SLUB_MIN_SIZE << index;
 }
 
