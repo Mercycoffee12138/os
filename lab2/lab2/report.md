@@ -132,3 +132,154 @@ if (p + p->property == base) {
 2.内存碎片：Best-Fit 能有效减少大块被频繁切割，但仍可能产生大量小碎片。可进一步采用 Buddy System（伙伴系统）、Slab 分配等高级算法，动态合并和拆分，进一步降低碎片率。
 
 3.空间利用率：当前每个页都需维护元数据，若页数极多，元数据占用空间也会增加。可通过优化元数据结构或批量管理提升空间利用率。
+
+
+
+## 扩展练习Challenge：buddy system（伙伴系统）分配算法（需要编程）
+
+### （1）buddy system的基本思想
+
+伙伴系统（Buddy System）是一种用于内存管理的分配算法，主要用于减少内存碎片并提高分配和释放的效率。其基本思想如下：
+
+1. 内存以2的幂次大小进行分割。例如，整个内存空间被分为若干块，每块大小为2^k。
+2. 当需要分配一块内存时，系统会找到最小的、足够大的2的幂次块。如果没有正好合适的块，则将更大的块不断一分为二，直到得到合适大小的块。
+3. 每次分割得到的两块称为“伙伴”（Buddy），它们在物理地址上是连续的。
+4. 当释放内存时，系统会检查该块的伙伴是否也空闲。如果是，则将两块合并为更大的块，继续向上合并，直到不能再合并为止。
+5. 通过这种方式，伙伴系统能够高效地进行内存分配和回收，减少外部碎片。
+
+### （2）buddy system的基本设计
+
+1.内存分级管理：
+
+​	整个物理内存被分割为若干块，每块大小为2k2*k*页（k=0,1,...,MAX_ORDER *k*=0,1,...,*MAX*_*ORDER*）。
+
+每种大小的块都有一个空闲链表（free list），如1页、2页、4页、8页……最大到2MAX_ORDER2*MAX*_*ORDER*页。
+
+2.数据结构
+
+`struct Page`：每个物理页的描述符，记录页状态、块大小等。
+
+`free_area_t`：每个阶的空闲块链表，包含链表头和空闲块数量。
+
+`free_lists[MAX_ORDER+1]`：所有阶的空闲链表数组。
+
+整体架构图示例：
+
+```
+物理内存
+└─ free_lists[0]：1页块链表
+└─ free_lists[1]：2页块链表
+└─ free_lists[2]：4页块链表
+...
+└─ free_lists[MAX_ORDER]：最大块链表
+
+分配/释放流程
+[请求n页] → [找到order] → [查找/分裂/分配] → [释放时合并伙伴]
+```
+
+### （3）buddy system的算法分析
+
+buddy system的核心流程可以分为初始化、分配、释放与合并三大部分，下面按主要函数讲解：
+
+1. 初始化（buddy_init 和 buddy_init_memmap）
+
+buddy_init：初始化所有阶的空闲链表，把nr_free清零。
+
+buddy_init_memmap：把所有物理页初始化为未分配状态，然后用贪心法把整个内存分割成尽可能大的2的幂次块，每个块挂到对应阶的空闲链表。
+
+1. 分配（buddy_alloc_pages）
+
+输入n页，先用get_order算出最小满足n的2的幂次order。从order阶开始查找空闲块，如果没有就往更高阶找，直到找到一个足够大的块。
+
+如果找到的块比需要的大（current_order > order），就不断分裂：每次分裂出右半部分（buddy），挂到更低阶的空闲链表，直到分裂到刚好满足需求的order阶。最终返回分配的块指针。
+
+1. 释放与合并（buddy_free_pages）
+
+输入要释放的块和大小n，先用get_order算出order。把块属性和标志重置，挂到对应阶的空闲链表。
+
+检查伙伴块（get_buddy），如果伙伴块也空闲且大小相同，则合并为更高阶块，继续尝试合并，直到不能再合并为止。最终把合并后的块挂到对应阶的空闲链表。
+
+### （4）算法样例设计
+
+首先测试的是我们的简单的分配与释放：分配1页和2页，断言分配成功，然后释放，测试最基本的分配和释放。
+
+```
+struct Page *simple1 = alloc_pages(1);
+struct Page *simple2 = alloc_pages(2);
+assert(simple1 != NULL && simple2 != NULL);
+free_pages(simple1, 1);
+free_pages(simple2, 2);
+```
+
+然后进行的是复杂的分配释放：
+
+```
+struct Page *complex1 = alloc_pages(3);
+struct Page *complex2 = alloc_pages(5);
+struct Page *complex3 = alloc_pages(7);
+assert(complex1 != NULL && complex2 != NULL && complex3 != NULL);
+free_pages(complex1, 3);
+free_pages(complex2, 5);
+free_pages(complex3, 7);
+```
+
+分配3、5、7页（不是2的幂），实际会分配到最近的2的幂（如4、8页），释放后测试伙伴合并机制。
+
+接着进行的是伙伴系统的单元分配与释放：分配/释放1页，测试分配器对最小单位的支持。
+
+```
+struct Page *min_unit = alloc_pages(1);
+assert(min_unit != NULL);
+free_pages(min_unit, 1);
+```
+
+我们接下来测试的是最大单元分配释放：分配/释放最大支持的块（2^MAX_ORDER页），测试极限情况。
+
+```
+struct Page *max_unit = alloc_pages(1 << MAX_ORDER);
+if (max_unit != NULL) {
+    free_pages(max_unit, 1 << MAX_ORDER);
+}
+```
+
+下一个测试的是伙伴系统的2的幂次分配和非2的幂次分配：分配1、2、4、8页，测试标准块分配。
+
+```
+struct Page *p1 = alloc_pages(1);
+struct Page *p2 = alloc_pages(2);
+struct Page *p4 = alloc_pages(4);
+struct Page *p8 = alloc_pages(8);
+assert(p1 != NULL && p2 != NULL && p4 != NULL && p8 != NULL);
+
+struct Page *p3 = alloc_pages(3); // 实际分配4页
+struct Page *p5 = alloc_pages(5); // 实际分配8页
+assert(p3 != NULL && p5 != NULL);
+```
+
+我们选择释放前面分配的所有块，统计释放前后空闲页数，验证伙伴合并机制。
+
+接着我们进行大块分配和边界情况检测：
+
+```
+struct Page *large = alloc_pages(64);
+if (large != NULL) {
+    free_pages(large, 64);
+}
+
+struct Page *huge = alloc_pages(1 << (MAX_ORDER + 1));
+assert(huge == NULL);  // 应该失败
+```
+
+最后我们进行连续的分配和释放操作：连续分配10个单页，再全部释放，测试分配器在高频操作下的稳定性和正确性。
+
+```
+struct Page *pages_array[10];
+for (int i = 0; i < 10; i++) {
+    pages_array[i] = alloc_pages(1);
+    assert(pages_array[i] != NULL);
+}
+for (int i = 0; i < 10; i++) {
+    free_pages(pages_array[i], 1);
+}
+```
+

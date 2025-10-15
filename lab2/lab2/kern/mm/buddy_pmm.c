@@ -46,12 +46,12 @@ static int get_order(size_t n) {
 
 // 检查两个页块是否为伙伴
 static int is_buddy(struct Page *p1, struct Page *p2, int order) {
-    // 两个块必须大小相同且都是空闲的
+    // 两个块必须大小相同且都是空闲的，1<<order即2^orderzh
     if (p1->property != (1 << order) || p2->property != (1 << order)) {
         return 0;
     }
     
-    // 计算两个页的索引
+    // 计算两个页的索引，pages指向的是page数组的开头，所以p1-pages就是距离page开头的距离，即第几页
     uintptr_t p1_idx = p1 - pages;
     uintptr_t p2_idx = p2 - pages;
     
@@ -68,9 +68,28 @@ static int is_buddy(struct Page *p1, struct Page *p2, int order) {
 }
 
 // 获取页的伙伴页
+/*
+假设 page_idx = 0，order = 2，1 << 2 = 4，buddy_idx = 0 ^ 4 = 4
+假设 page_idx = 4，order = 2，buddy_idx = 4 ^ 4 = 0
+假设 order = 2，块大小为 2^2=4,编号分别为 4 和 8：
+page_idx = 4
+1 << order = 4
+buddy_idx = 4 ^ 4 = 0
+所以 4号块的伙伴是0号块。
+如果 page_idx = 8：
+buddy_idx = 8 ^ 4 = 12
+所以 8号块的伙伴是12号块。
+结论：
+异或操作会把当前编号的第 order 位翻转，得到伙伴块的编号。
+比如 4和8不是一对伙伴，4的伙伴是0，8的伙伴是12。
+只有编号差值等于块大小，并且在同一对齐区间内，才是伙伴。
+“同一对齐区间”指的是：伙伴系统中，两个块要成为伙伴，除了大小相同、编号相邻，还必须在同一个更大块的范围内。
+具体来说，对于阶数为 order 的块（大小为2^order），它的伙伴必须在同一个2^(order+1)大小的区间内。
+比如 order=2 时，每个区间大小是2^(2+1)=8,编号 0-7 是一个区间，8-15 是下一个区间。
+*/
 static struct Page *get_buddy(struct Page *page, int order) {
     uintptr_t page_idx = page - pages;
-    uintptr_t buddy_idx = page_idx ^ (1 << order);
+    uintptr_t buddy_idx = page_idx ^ (1 << order);//通过异或操作实现编号翻转，
     return pages + buddy_idx;
 }
 
@@ -89,6 +108,7 @@ static void
 buddy_init(void) {
     // 初始化所有空闲链表
     nr_free = 0;
+    //每个order的对应的free_list都要进行初始化
     for (int i = 0; i <= MAX_ORDER; i++) {
         list_init(&(free_lists[i].free_list));
         free_lists[i].nr_free = 0;
@@ -111,7 +131,12 @@ buddy_init_memmap(struct Page *base, size_t n) {
     // 将内存块按2的幂次分解并添加到相应的空闲链表中
     size_t current_size = n;
     struct Page *current_base = base;
-    
+    /*
+    每次循环，找出当前剩余页数 current_size 能分割出的最大 2 的幂次块（比如 8页、4页、2页、1页）。
+    把这块的属性设置好，并加入对应阶的空闲链表（比如 8页块挂到 order=3 的链表）。
+    更新统计信息（空闲块数量、总空闲页数）。
+    指针后移，继续处理剩下的页，直到全部分割完。
+    */
     while (current_size > 0) {
         // 找到不大于current_size的最大的2的幂次
         int order = 0;
@@ -160,7 +185,12 @@ buddy_alloc_pages(size_t n) {
             free_lists[current_order].nr_free--;
             nr_free -= (1 << current_order);
             ClearPageProperty(page);
-            
+            /*
+            buddy系统分配内存时，如果你请求的页数不是2的幂，比如你要3页，它会分配最接近且大于等于3的2的幂次块（比如4页）。
+            分配时会从空闲链表里找合适的块，如果找到的块比你需要的大（比如8页），就会不断分裂成更小的块，直到分裂出刚好满足你需求的最小2的幂次块（比如4页），
+            剩下的右半部分会挂到对应阶的空闲链表里。
+            这样做的原因是buddy系统的所有块都必须是2的幂次大小，这样才能方便后续合并和管理。虽然会有一点浪费，但能极大简化内存管理和合并操作。
+            */
             // 如果块太大，需要分裂
             while (current_order > order) {
                 current_order--;
