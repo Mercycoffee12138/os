@@ -37,7 +37,7 @@ static void check_alloc_page(void);
 // init_pmm_manager - initialize a pmm_manager instance
 static void init_pmm_manager(void) {
     //切换管理器
-    pmm_manager = &slub_pmm_manager;
+    pmm_manager = &best_fit_pmm_manager;
     cprintf("memory management: %s\n", pmm_manager->name);
     pmm_manager->init();
 }
@@ -65,40 +65,40 @@ size_t nr_free_pages(void) {
 }
 
 static void page_init(void) {
-    va_pa_offset = PHYSICAL_MEMORY_OFFSET;
+    va_pa_offset = PHYSICAL_MEMORY_OFFSET;//设置偏移量
 
-    uint64_t mem_begin = get_memory_base();
+    uint64_t mem_begin = get_memory_base();//获取物理内存的起始地址和总大小
     uint64_t mem_size  = get_memory_size();
     if (mem_size == 0) {
         panic("DTB memory info not available");
     }
-    uint64_t mem_end   = mem_begin + mem_size;
+    uint64_t mem_end   = mem_begin + mem_size;//物理内存的结束地址
 
     cprintf("physcial memory map:\n");
     cprintf("  memory: 0x%016lx, [0x%016lx, 0x%016lx].\n", mem_size, mem_begin,
             mem_end - 1);
 
     uint64_t maxpa = mem_end;
-
+    //限制最大物理地址的支持上限，为KERNTOP
     if (maxpa > KERNTOP) {
         maxpa = KERNTOP;
     }
 
     extern char end[];
 
-    npage = maxpa / PGSIZE;
+    npage = maxpa / PGSIZE;//计算总页数
     //kernel在end[]结束, pages是剩下的页的开始
     pages = (struct Page *)ROUNDUP((void *)end, PGSIZE);
-
+    //标记不可分配的页面
     for (size_t i = 0; i < npage - nbase; i++) {
         SetPageReserved(pages + i);
     }
-
+    //计算pages数组结束之后第一个可用的物理地址
     uintptr_t freemem = PADDR((uintptr_t)pages + sizeof(struct Page) * (npage - nbase));
-
+    //将起始和结束地址对齐到页边界，确保分配时不会跨页
     mem_begin = ROUNDUP(freemem, PGSIZE);
     mem_end = ROUNDDOWN(mem_end, PGSIZE);
-    if (freemem < mem_end) {
+    if (freemem < mem_end) {//空闲页链表
         init_memmap(pa2page(mem_begin), (mem_end - mem_begin) / PGSIZE);
     }
 }
