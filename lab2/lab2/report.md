@@ -451,7 +451,7 @@ memset(slub_allocator.page_infos, 0, info_size);
 
 #### 测试结果
 
-如下为一次运行的输出截图（对象级全类目测试）：
+如下为一次运行的输出截图：
 
 ![SLUB Check](slubcheck.png)
 
