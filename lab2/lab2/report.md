@@ -286,40 +286,35 @@ for (int i = 0; i < 10; i++) {
 ## Challenge2：slub算法实现
 ### 基本思想
 
-SLUB（Simple List of Unused Blocks）算法是一种高效的内存分配器，主要用于管理小对象的分配和释放。其基本思想是通过以下机制优化性能：
+SLUB（Simple List of Unused Blocks）算法是一种高效的内存分配器，主要用于管理小对象的分配和释放。结合本实验的实现，我们采用了如下方案：
 
 1. **大小类别（Size Class）分类**：
-   - 将内存分为多个固定大小的类别（如 8 字节、16 字节、32 字节等），每个类别对应一个 `slub_cache`。
-   - 这种分类方式减少了内存碎片，提高了分配效率。
+   - 本实现启用了 10 个按 2 的幂次增长的大小类别：8、16、32、64、128、256、512、1024、2048、4096 字节（$2^3$ 到 $2^{12}$）。
+   - 不包含 96 与 192 的特殊 size class，所有请求先按 8 字节对齐后映射到不小于请求的幂次类。
 
 2. **CPU 缓存优化**：
-   - 每个大小类别维护一个本地 CPU 缓存（`slub_cpu_cache`），用于快速分配和释放内存。
-   - 本地缓存的使用避免了频繁访问全局数据结构，从而提高了并发性能。
+   - 每个大小类别都有一个本地 CPU 缓存（`slub_cpu_cache`），O(1) 快速分配/释放，减少对共享结构的竞争。
 
 3. **Slab 页面管理**：
-   - 每个大小类别从 Slab 页面中分配对象，一个 Slab 页面包含多个相同大小的对象。
-   - Slab 页面分为三种状态：完全空闲、部分使用和完全使用。
-   - 部分使用的 Slab 页面通过链表（`partial_list`）管理，以便高效地复用未使用的对象。
+   - 每个 size class 从 Slab 页面中批量管理等大对象。页内通过单链表维护空闲对象（`freelist`）。
+   - 维护「部分使用」的 slab 链表（`partial_list`），优先从部分 slab 分配以提升复用率。
 
-4. **内存对齐和分配策略**：
-   - 所有分配的内存块都按照 8 字节对齐，确保内存访问的高效性。
-   - 使用 `first-fit` 策略分配页面，尽量减少内存浪费。
+4. **页级快速路径与回退策略**：
+   - 对于单页申请（n==1），引入“页大小 cache”的快速路径：命中则直接返回缓存的页；未命中或多页申请则回退到简化的 first-fit 扫描空闲页。
 
-5. **统计信息和调试支持**：
-   - SLUB 分配器维护了详细的统计信息（如分配次数、释放次数、缓存命中率等），便于性能分析和调试。
+5. **统计信息与可观测性**：
+   - 分配/释放总次数、缓存命中次数、活跃 slab 数等统计，便于调试与分析。
 
-通过以上机制，SLUB 算法在保证高性能的同时，尽量减少了内存碎片，适用于频繁的小对象分配场景。
+通过以上机制，SLUB 在保证分配速度的同时兼顾了内存利用率，适合频繁的小对象分配场景。
 
 
 ### 架构图
-
-以下是 SLUB 算法的架构图，展示了其核心组件及其关系：
 
 ```plaintext
 +-------------------+       +-------------------+
 |   slub_allocator  |       |   slub_cache      |
 |-------------------|       |-------------------|
-| size_caches[11]   |<----->| object_size       |
+| size_caches[10]   |<----->| object_size       |
 | total_allocs      |       | objects_per_slab  |
 | total_frees       |       | cpu_cache         |
 | cache_hits        |       | partial_list      |
@@ -327,7 +322,7 @@ SLUB（Simple List of Unused Blocks）算法是一种高效的内存分配器，
 | page_infos        |       | nr_free           |
 | max_pages         |       | nr_allocs         |
 +-------------------+       | nr_frees          |
-                               +-------------------+
+                              +-------------------+
 
 +-------------------+
 | slub_page_info    |
@@ -349,324 +344,118 @@ SLUB（Simple List of Unused Blocks）算法是一种高效的内存分配器，
 ```
 
 **说明：**
-- `slub_allocator` 是全局分配器，管理所有大小类别的缓存（`slub_cache`）。
-- 每个 `slub_cache` 管理一种固定大小的对象，并通过 `partial_list` 维护部分使用的 Slab 页面。
-- `slub_page_info` 描述每个 Slab 页的状态，包括空闲链表、已使用对象数等。
-- `slub_cpu_cache` 是每个 CPU 的本地缓存，用于快速分配和释放内存。
+- `slub_allocator` 管理全部 size class 的 `slub_cache`，并维护全局统计。
+- `slub_cache` 负责单一对象大小的管理，包含 per-CPU 缓存与 `partial_list`。
+- `slub_page_info` 描述单页 slab 的页内空闲链表与使用计数等。
+- `slub_cpu_cache` 提供本地快速分配能力。
 
 ### 数据结构
 
 #### slub_cache
 
-> slub算法中，我们一般有大小从$2^{3} - 2^{11},以及96和192$共11中存储对象的大小用来管理小内存的分配与释放。
+> 本实现按 $2^3..2^{12}$ 共 10 种大小管理小对象（不包含 96/192 特殊类）。
 
-该数据结构专门用于管理一种固定大小的对象。它拥有一些slab页面，这些slab页面中内存存储方式是对应的固定大小的对象。
-
-其拥有的成员变量如下：
+用于管理某一固定大小对象的缓存，维护对应的部分 slab 页面与本地缓存。
 
 ```c
 size_t object_size;             // 对象大小
-unsigned int objects_per_slab;  // 每slab对象数
-struct slub_cpu_cache cpu_cache; // CPU缓存
-list_entry_t partial_list;      // 部分空闲slab链表
-size_t nr_slabs;                // slab总数
-size_t nr_free;                 // 空闲对象数
+unsigned int objects_per_slab;  // 每 slab 对象数
+struct slub_cpu_cache cpu_cache; // CPU 缓存
+list_entry_t partial_list;      // 部分空闲 slab 链表
+size_t nr_slabs;                // 当前活跃 slab 页数
+size_t nr_free;                 // 空闲对象数（可选统计）
 size_t nr_allocs;               // 分配次数
 size_t nr_frees;                // 释放次数
 ```
 
-> 这里对于partial_list变量单独给出解释：slub算法中的slab页面一般有三种种类
->
-> - 内部对象完全没有被分配过的页面
-> - 部分被分配但仍有没有被使用的对象的页面
-> - 所有内部对象均被使用过的页面
->
-> 而这个链表用于管理该cache中的第二种页面。
-
 #### slub_page_info
 
-该数据结构用来管理slub算法中的页面的信息（slab页面的信息）
+记录单个 slab 页上的对象分配状态：
 
 ```c
-void *freelist;                 // 页内空闲链表
+void *freelist;                 // 页内空闲对象单链表
 unsigned int inuse;             // 已使用对象数
 unsigned int objects;           // 总对象数
-struct slub_cache *cache;       // 所属缓存
-list_entry_t slab_list;         // 链表节点
+struct slub_cache *cache;       // 归属的 cache
+list_entry_t slab_list;         // partial 链表结点
 ```
-
-同样，该数据结构的成员变量很好理解。
-
-> 这里仅对slab_list变量给出解释，该变量是这个页面对应的链表节点的值，用于在链表中找到对应页面。
 
 #### slub_cpu_cache
 
-在多cpu的系统中，每个cpu在自己本地保存了一份cpu的缓存，用于存储cpu的本地运行信息。其中包含了这个cpu中的空闲页面的链表，可用页数量和最多的页数的数量。
+本地 CPU 缓存，支持 O(1) 的对象级分配与释放：
+
+```c
+void **freelist;  // 本地空闲对象数组
+unsigned int avail; // 当前可用数
+unsigned int limit; // 上限（本实验设为 16）
+```
 
 #### slub_allocator
 
-该数据结构用于全局分配slub_cache
+全局分配器，索引到各大小类别的 cache，并追踪统计：
 
 ```c
 struct slub_cache *size_caches[SLUB_NUM_SIZES];
-size_t total_allocs;
-size_t total_frees;
-size_t cache_hits;
-size_t nr_slabs;
-struct slub_page_info *page_infos;
-size_t max_pages;
+size_t total_allocs, total_frees, cache_hits, nr_slabs;
+struct slub_page_info *page_infos; size_t max_pages;
 ```
-
-成员变量说明
-
-1. **`size_caches`**:
-   - 类型：`struct slub_cache *[SLUB_NUM_SIZES]`
-   - 描述：一个数组，每个元素是一个指向 `slub_cache` 的指针。
-   - 功能：存储所有大小类别（size class）的缓存，每个 `slub_cache` 管理一种固定大小的对象。
-   - 工作机制：通过 `size_to_index` 函数将对象大小映射到数组索引，从而快速找到对应的 `slub_cache`。
-2. **`total_allocs`**:
-   - 类型：`size_t`
-   - 描述：记录自分配器初始化以来的总分配次数。
-   - 功能：用于统计分配器的使用情况，便于性能分析和调试。
-3. **`total_frees`**:
-   - 类型：`size_t`
-   - 描述：记录自分配器初始化以来的总释放次数。
-   - 功能：与 `total_allocs` 一起，用于计算内存分配和释放的平衡性。
-4. **`cache_hits`**:
-   - 类型：`size_t`
-   - 描述：记录从 CPU 缓存（`cpu_cache`）中直接分配内存的次数。
-   - 功能：反映缓存的命中率，命中率越高，分配器性能越好。
-5. **`nr_slabs`**:
-   - 类型：`size_t`
-   - 描述：记录当前分配的 slab 页面总数。
-   - 功能：用于统计分配器的内存使用情况。
-6. **`page_infos`**:
-   - 类型：`struct slub_page_info *`
-   - 描述：指向一个数组，每个元素是一个 `slub_page_info` 结构，描述一个物理页面的状态。
-   - 功能：记录所有页面的元信息，包括页面是否属于 slab、页面的使用情况等。
-7. **`max_pages`**:
-   - 类型：`size_t`
-   - 描述：记录分配器管理的最大页面数。
-   - 功能：用于限制分配器的管理范围，防止越界访问。
 
 ### 函数
 
 #### slub_init
 
-在这个函数中，我们对我们的slub分配器进行初始化，并把每一个处理固定大小对象的cache进行初始化处理。
+初始化全局分配器与 10 个 size class 的 `slub_cache`：
 
-> 这里，对于内存分配，我们开辟了一块静态内存池用于模拟内存分配管理
->
-> ```c
-> static char static_heap[PGSIZE * 16];
-> static size_t heap_used = 0;
-> ```
-
-对于不同的对象大小的总数，我们设置有一个宏进行记录
+- 采用一块静态内存（`static_heap`）给元数据（cache 结构与本地缓存数组）做早期分配；
+- `index_to_size(i)` 产出对应的对象大小；
+- 计算 `objects_per_slab`，初始化 `partial_list` 与 `cpu_cache (limit=16)`。
 
 ```c
-#define SLUB_NUM_SIZES      11   // 大小类别数量
-```
-
-然后我们遍历这个SLUB_NUM_SIZES变量，对于每一个固定的对象大小，使用自定义的静态分配内存的函数用于内存分配
-
-```c
-size_t size = index_to_size(i);
-
-struct slub_cache *cache = static_alloc(sizeof(struct slub_cache));
-if (!cache) continue;
-```
-
-这里的index_to_size是一个自定义的映射函数，从索引i映射到对应的块大小$2^i$,其实现可以见具体代码，这里不做展开讲解。
-
-内存分配函数具体函数实现细节如下：
-
-```c
-static void *static_alloc(size_t size) {
-    if (heap_used + size > sizeof(static_heap))
-        return NULL;
-    void *ptr = &static_heap[heap_used];
-    heap_used = ((heap_used + size + 7) / 8) * 8;  // 8字节对齐
-    return ptr;
-}
-```
-
-> 这里没什么太多重点，唯一需要注意的是我们在return之前的最后一行进行了八字节对齐，从而避免额外的内存访问。
-
-最后对cpu_cache和slub_cache进行了一些初始化设置。
-
-```c
-memset(cache, 0, sizeof(struct slub_cache));
-cache->object_size = size;
-cache->objects_per_slab = (PGSIZE - sizeof(void*)) / size;
-if (cache->objects_per_slab == 0)
-    cache->objects_per_slab = 1;
-
-// 初始化链表
-list_init(&cache->partial_list);
-
-// 初始化CPU缓存
-cache->cpu_cache.freelist = static_alloc(SLUB_CPU_CACHE_SIZE * sizeof(void*));
-cache->cpu_cache.avail = 0;
-cache->cpu_cache.limit = SLUB_CPU_CACHE_SIZE;
-
-slub_allocator.size_caches[i] = cache;
+#define SLUB_NUM_SIZES 10 // 大小类别数量
 ```
 
 #### slub_init_memmap
 
-该函数的作用是使用分配器（`slub_allocator`）初始化页信息数组。
+为每个物理页建立 `slub_page_info` 元信息数组，并把其后的页标记为空闲：
 
 ```c
- slub_allocator.page_infos = (struct slub_page_info *)page2kva(base);
+slub_allocator.page_infos = (struct slub_page_info *)page2kva(base);
+memset(slub_allocator.page_infos, 0, info_size);
+// 从 base + info_pages 开始的页清理标志位、ref 等
 ```
 
-使用传入的开始地址base，使用page2kva宏将其转化为虚拟地址之后，再强转为slub_page_info类型的指针，从而让slub_allocator的page_infos数组变量从base地址在虚拟地址的映射结果开始。
+#### slub_alloc_pages / slub_free_pages（页级）
 
-初始化过程中，涉及到两个变量：
+- 单页（n==1）启用“页大小 cache”快速路径：
+  - 命中时直接返回并计入缓存命中统计；
+  - 释放时若本地缓存未满则将该页放回缓存，并保留 Reserved 置位以避免被慢路径重复分配。
+- 其他情况回退到简化的 first-fit 扫描空闲页实现。
 
-- info_size：所有的page_info需要的总大小。
-- info_pages：page_info需要的内容在内核中占多少个页。
+#### slub_malloc / slub_free（对象级）
 
-定义了page_infos的开始地址后，我们将从这里开始的info_size个内存空间初始化为0，然后从物理空间的base + info_pages地址开始，将剩下页面设置为空闲。也就是清空了页面的保留状态、特殊属性、和引用计数。
+- 分配路径：本地 CPU 缓存 → partial slab → 新建 slab（页内建立对象 freelist）。
+- 释放路径：优先放回本地 CPU 缓存；否则回页内 freelist；当 slab 变空时释放整页。
 
-```c
-ClearPageReserved(p);
-ClearPageProperty(p);
-set_page_ref(p, 0);
-```
+### check（测试）
 
-#### slub_alloc_pages
+本实验将测试重点放在“对象级”逻辑，覆盖所有 10 个 size class：
 
-该函数执行的作用是分配指定数量的页面。
+1. 遍历全部大小类别（8..4096），对每个 `slub_cache`：
+   - 执行小批量分配（最多 32 或 `objects_per_slab + 1`，以覆盖新建 slab 的路径）；
+   - 先释放一个对象再立即分配一个，验证一次 per-CPU 缓存命中（命中计数不下降）；
+   - 释放全部对象，观察 slab 生命周期是否合理；
+2. 汇总输出总分配/释放次数、缓存命中次数增量与当前活跃 slab 数；
+3. 对活跃 slab 数做回归检查，允许少量常驻（例如 ≤2 页）以提升后续复用性能。
 
-在此函数中，我们用到了两个全局变量：
+相较于更全面的系统级 page 测试，本次 `slub_check` 仅针对对象级路径，便于聚焦 SLUB 的核心行为与统计。
 
-- pages 系统中所有物理页面的元数据
-- npage 系统中物理页面的总页数
+#### 测试结果
 
-而函数的具体实现，实现的是简单的first_fit算法，在此不再赘述。
+如下为一次运行的输出截图（对象级全类目测试）：
 
-#### slub_free_pages
+![SLUB Check](slubcheck.png)
 
-> 像init一样，将每个页面的保留位、特殊属性、引用位清零。
-
-#### slub_nr_free_pages
-
-> 在这个函数中，我们是用条件!PageReserved(pages + i) && !PageProperty(pages + i)来判断当前页面是否是空闲的页面，也就是不是保留页，且property为0.
-
-### check
-
-#### 1. `basic_check` 函数
-
-`basic_check` 是一个基础检查函数，用于验证 SLUB 分配器的基本功能是否正常。它通过分配和释放页面来测试分配器的正确性。
-
-**功能分析：**
-
-1. **页面分配测试：**
-   - 使用 `alloc_page` 分配三个页面 `p0`、`p1` 和 `p2`。
-   - 确保分配的页面地址不重复，且引用计数为 0。
-   - 验证分配的页面地址在合法范围内（通过 `page2pa` 检查物理地址）。
-
-2. **释放测试：**
-   - 使用 `free_page` 释放之前分配的页面。
-   - 确保释放后可以重新分配相同的页面。
-
-3. **空闲页面数量检查：**
-   - 在释放页面前后，通过 `slub_nr_free_pages` 检查空闲页面数量是否正确变化。
-
-**代码逻辑：**
-
-- 通过断言（`assert`）确保每一步操作的正确性。
-- 验证分配器的基本功能，包括页面分配、释放和引用计数的正确性。
-
-**作用：**
-
-- 确保分配器的基本功能正常，为后续更复杂的测试提供基础保障。
-
----
-
-#### 2. `slub_check` 函数
-
-`slub_check` 是一个全面的检查函数，用于验证 SLUB 分配器的所有核心功能，包括大小分类系统、缓存管理、页面管理和性能统计等。
-
-**功能分析：**
-
-1. **初始状态记录：**
-   - 记录检查开始时的系统状态，包括空闲页面数、总分配次数和总释放次数。
-   - 为后续的内存泄漏检测提供基准。
-
-2. **基础功能验证：**
-   - 调用 `basic_check` 验证分配器的基本页面分配和释放功能。
-
-3. **SLUB大小分类系统检查：**
-   - 验证11种大小类别（8, 16, 32, 64, 128, 256, 512, 1024, 2048, 96, 192字节）的正确映射。
-   - 测试 `size_to_index` 和 `index_to_size` 函数的双向转换。
-   - 验证边界条件处理，如最小值、特殊大小和超出范围的情况。
-
-4. **缓存结构初始化检查：**
-   - 验证每个大小类别的 `slub_cache` 结构正确初始化。
-   - 检查对象大小、每slab对象数、CPU缓存限制等参数。
-   - 确认partial链表和CPU缓存的初始状态。
-
-5. **页面信息结构检查：**
-   - 验证 `page_infos` 数组的正确初始化。
-   - 检查页面信息结构的初始状态（空闲链表、使用计数等）。
-
-6. **多页分配和释放测试：**
-   - 测试不同大小的多页分配（1, 2, 4, 3页）。
-   - 验证页面标志的正确设置（PageReserved）。
-   - 确认分配和释放的正确性。
-
-7. **边界条件测试：**
-   - 测试单页分配和大块分配（16页）。
-   - 验证页面信息边界访问的安全性。
-   - 处理内存不足等异常情况。
-
-8. **压力测试：**
-   - 进行多轮快速分配和释放操作（15次循环，2轮测试）。
-   - 测试不同大小的混合分配模式。
-   - 检测内存泄漏和分配器的稳定性。
-
-9. **统计信息验证和报告：**
-   - 输出详细的系统状态报告，包括：
-     - 空闲页面数和变化量
-     - 总分配/释放次数和增量
-     - 缓存命中次数和命中率
-     - 活跃slab数量
-   - 提供每个大小类别的详细统计信息。
-
-10. **内存完整性检查：**
-    - 比较检查前后的空闲页面数量。
-    - 检测是否存在显著的内存泄漏。
-    - 提供内存完整性验证结果。
-
-**代码逻辑：**
-
-- 采用分阶段测试策略，每个阶段都有明确的输出标识。
-- 使用大量断言（`assert`）确保每一步操作的正确性。
-- 提供详细的进度输出和错误报告。
-
-**作用：**
-
-- 全面验证SLUB分配器的所有核心功能。
-- 提供详细的性能和状态分析数据。
-- 检测内存泄漏和分配器稳定性问题。
-- 为分配器的调试和优化提供数据支持。
-
----
-
-#### 3.测试结果
-
-以下是SLUB分配器的测试结果截图：
-
-**SLUB检查测试第一部分：**
-![SLUB Check Part 1](slubcheck1.png)
-
-**SLUB检查测试第二部分：**
-![SLUB Check Part 2](slubcheck2.png)
-
-可以看到，我们的测试成功通过了，说明我们实现的slub算法可以正常的执行，也正确完成了其基本功能！
+可以看到，所有大小类别均完成了分配→缓存命中→释放的流程，统计信息与 slab 数量变化符合预期，说明当前 SLUB 实现能够正确工作。
 
 ## 扩展练习Challenge：硬件的可用物理内存范围的获取方法（思考题）
 
