@@ -20,6 +20,21 @@ struct list_entry {
 
 typedef struct list_entry list_entry_t;
 
+/*
+ * 链表操作函数声明说明：
+ *
+ * list_init         初始化链表节点，使其指向自身，形成空链表
+ * list_add          在listelm节点之后插入elm节点（即elm插到listelm后面）
+ * list_add_before   在listelm节点之前插入elm节点（即elm插到listelm前面）
+ * list_add_after    在listelm节点之后插入elm节点（和list_add功能一样，底层实现不同）
+ * list_del          从链表中删除listelm节点（不会重置其指针）
+ * list_del_init     从链表中删除listelm节点，并重新初始化为单独节点（指向自身）
+ * list_empty        判断链表是否为空（即只有一个节点，next指向自己）
+ * list_next         获取链表中listelm节点的下一个节点
+ * list_prev         获取链表中listelm节点的上一个节点
+ * __list_add        内部函数：在prev和next之间插入elm节点
+ * __list_del        内部函数：将prev和next直接连接起来，删除中间节点
+ */
 static inline void list_init(list_entry_t *elm) __attribute__((always_inline));
 static inline void list_add(list_entry_t *listelm, list_entry_t *elm) __attribute__((always_inline));
 static inline void list_add_before(list_entry_t *listelm, list_entry_t *elm) __attribute__((always_inline));
