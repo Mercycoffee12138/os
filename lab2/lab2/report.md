@@ -426,15 +426,68 @@ memset(slub_allocator.page_infos, 0, info_size);
 
 #### slub_alloc_pages / slub_free_pages（页级）
 
-- 单页（n==1）启用“页大小 cache”快速路径：
-  - 命中时直接返回并计入缓存命中统计；
-  - 释放时若本地缓存未满则将该页放回缓存，并保留 Reserved 置位以避免被慢路径重复分配。
-- 其他情况回退到简化的 first-fit 扫描空闲页实现。
+页级 API 负责从物理页层面提供 slab 的后备页来源，同时对“单页”走快速路径以降低频繁页操作的开销。
+
+- 分配流程（alloc，输入：n≥1）：
+    1) 若 n\==1，先查询“页大小 cache”的本地 CPU 缓存（对应 size class=PGSIZE）：
+         - 若 `cpu_cache.avail>0`，直接弹出一页并返回；同时：
+             - 设置 `SetPageReserved(p)`，保证该页对慢路径不可见；
+             - 统计：`total_allocs++`、`cache_hits++`、对应 cache 的 `nr_allocs++`。
+    2) 否则或未命中缓存，走慢路径：在全局页数组 `pages[0..npage)` 中做一次“首次适配”扫描：
+              - 寻找连续 n 页，满足每页 `!PageReserved && !PageProperty`；
+              - 找到后将这 n 页标记 `SetPageReserved` 并返回首页；
+              - 统计：`total_allocs++`（若 n==1 也为对应 cache 记一次 `nr_allocs++`）。
+
+- 释放流程（free，输入：base，n≥1）：
+    1) 若 n\==1，优先尝试放入“页大小 cache”的本地 CPU 缓存：
+         - 若 `cpu_cache.avail<limit`，将页指针压入缓存并返回；此时：
+             - 不清 `Reserved` 位（仍视为“保留在缓存中”的占用页，避免被慢路径再次分配）；
+             - 清理与 slab 相关的痕迹：`ClearPageSlab(base)`、`set_page_ref(base,0)`；
+             - 统计：`total_frees++`、对应 cache 的 `nr_frees++`。
+    2) 否则走常规释放：
+         - 对 n 页逐一执行：`ClearPageReserved`、`ClearPageSlab`、`set_page_ref(p,0)`；
+         - 统计：`total_frees++`（若 n==1 也为对应 cache 记一次 `nr_frees++`）。
+
+- 不变量与注意事项：
+    - 被缓存的单页始终保持 `Reserved` 置位，从而只会被“页大小 cache”再利用，不会与慢路径复用发生竞争；
+    - 与 slab 关联的页在释放到页缓存时会清理 `PG_slab` 标记；
+    - 多页只走慢路径，遵循简化的 first-fit 策略寻找连续空闲页。
 
 #### slub_malloc / slub_free（对象级）
 
-- 分配路径：本地 CPU 缓存 → partial slab → 新建 slab（页内建立对象 freelist）。
-- 释放路径：优先放回本地 CPU 缓存；否则回页内 freelist；当 slab 变空时释放整页。
+对象级 API 是本实验 SLUB 的核心，对齐到 8 字节后，将请求大小映射到最近的不小于请求的幂次 size class。
+
+- 分配流程（malloc，输入：size>0）：
+  1) 映射与对齐：`size = ROUNDUP(size,8)`，定位到 `slub_cache`（8..4096）。
+  2) 本地 CPU 缓存快路径：若 `cpu_cache.avail>0`，直接弹出一个对象并返回；统计：
+      - `total_allocs++`、`cache_hits++`、`cache->nr_allocs++`。
+  3) partial slab 复用：若 `partial_list` 非空，取表头 slab：
+      - 从其页内 `freelist` 弹出对象，`inuse++`；
+      - 若 `inuse==objects`，该 slab 变满，从 `partial_list` 脱链；
+      - 统计：`total_allocs++`、`cache->nr_allocs++`。
+  4) 新建 slab：若没有可复用的部分 slab：
+      - 调用 `slub_alloc_pages(1)` 取一页；在页上构造对象单链 freelist：
+         - 标记 `SetPageSlab`；设定 `info->cache=cache`、`objects=objects_per_slab`、`inuse=0`；
+         - 将页挂到该 cache 的 `partial_list`；
+      - 立刻分配一个对象，`inuse++`；若页已满则从 `partial_list` 脱链；
+      - 统计：`cache->nr_slabs++`、`allocator.nr_slabs++`、`total_allocs++`、`cache->nr_allocs++`。
+
+- 释放流程（free，输入：ptr 非空）：
+  1) 通过 `PADDR/pa2page` 找到对象所在页与 `slub_page_info`，定位到所属 `slub_cache`；
+  2) 本地 CPU 缓存优先：若 `cpu_cache.avail<limit`，将对象指针放入缓存数组并返回；统计：
+      - `total_frees++`、`cache->nr_frees++`。
+  3) 回页内 freelist：若缓存已满，将对象头插到该页 `freelist`，并 `inuse--`；
+      - 若该页先前为满页（即释放前 `inuse==objects`），则从“满→部分”，把该页挂回 `partial_list`；
+  4) 整页回收：若释放后 `inuse==0`，说明该 slab 已空：
+      - 将其从 `partial_list` 脱链、`ClearPageSlab`；
+      - `cache->nr_slabs--`、`allocator.nr_slabs--`；
+      - 调用 `slub_free_pages(page,1)` 释放该物理页；
+  5) 统计：`total_frees++`、`cache->nr_frees++`。
+
+- 关键不变量与边界：
+  - 页内 `inuse` 与 `objects` 一增一减，确保 0≤inuse≤objects；
+  - `partial_list` 只挂“部分使用”的 slab，满页必不在链上，空页会被立即释放；
+  - 4096B 类别下，一个 slab 只有 1 个对象（每页 1 个），行为等价于“页对象”。
 
 ### check（测试）
 
@@ -448,6 +501,25 @@ memset(slub_allocator.page_infos, 0, info_size);
 3. 对活跃 slab 数做回归检查，允许少量常驻（例如 ≤2 页）以提升后续复用性能。
 
 相较于更全面的系统级 page 测试，本次 `slub_check` 仅针对对象级路径，便于聚焦 SLUB 的核心行为与统计。
+
+#### 断言要点
+
+- 基本正确性：
+    - 每次分配返回的对象指针均非空；
+    - 对象释放接口在 `ptr!=NULL` 时应执行有效释放流程。
+- 本地缓存命中：
+    - 对同一 size class，先释放一个对象再立刻分配一个，命中计数满足 `cache_hits_after ≥ cache_hits_before`；
+    - 分配/释放均会累加 `total_allocs/total_frees`，且最终 `total_allocs ≥ total_frees`。
+- partial slab 状态转移：
+    - 从 `partial_list` 分配对象后，若 `inuse==objects`，该 slab 必须从 `partial_list` 脱链；
+    - 释放一个原本“满页”的对象后，应使该页从“满→部分”，即进入 `partial_list`；
+    - 任意时刻保持不变量 `0 ≤ inuse ≤ objects`。
+- 新建与回收 slab：
+    - 在一次批量分配（至多 32 或 `objects_per_slab+1`）中，若现有部分 slab 不足，应触发至少一次新 slab 创建（`nr_slabs` 增加，且该页被 `SetPageSlab` 标记，并建立页内 freelist）；
+    - 释放本轮全部对象后，空 slab 应被回收并清理 `PG_slab` 标记，`nr_slabs` 回落至接近起始值（允许 ≤2 页常驻，用于后续复用）。
+- 列表一致性：
+    - `partial_list` 只包含“部分使用”的 slab，满页不在链上，空页在回收前也不应留在链上；
+    - 对于 4096B 类（每页 1 个对象），其行为等价于“页对象”，亦应满足上述转移与回收规则。
 
 #### 测试结果
 
