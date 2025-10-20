@@ -22,7 +22,7 @@
 
 此时唯一能用的就是**CPU + 固件（BIOS / UEFI）+ 启动引导程序（Bootloader）**。
 
-因此 —— OS 自己是“看不见内”存的，它必须通过 **引导加载器（Bootloader）或固件接口** 获取物理内存布局（memory map）。
+因此 —— OS 自己是看不见内存的，它必须通过 **引导加载器（Bootloader）或固件接口** 获取物理内存布局（memory map）。
 
 ------
 

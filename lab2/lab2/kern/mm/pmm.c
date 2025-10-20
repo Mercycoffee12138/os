@@ -36,8 +36,13 @@ static void check_alloc_page(void);
 
 // init_pmm_manager - initialize a pmm_manager instance
 static void init_pmm_manager(void) {
+<<<<<<< HEAD
     // 切换管理器：使用 SLUB 分配器进行练习测试
     pmm_manager = &best_fit_pmm_manager;
+=======
+    //切换管理器
+    pmm_manager = &buddy_pmm_manager;
+>>>>>>> adbeda8 (lab3 exercise and challenge3)
     cprintf("memory management: %s\n", pmm_manager->name);
     pmm_manager->init();
 }
