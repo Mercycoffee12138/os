@@ -26,26 +26,17 @@ static void print_ticks() {
  */
 void idt_init(void) {
     /* LAB3 2310137 : STEP 2 */
-    /* (1) Where are the entry addrs of each Interrupt Service Routine (ISR)?
-     *     All ISR's entry addrs are stored in __vectors. where is uintptr_t
-     * __vectors[] ?
-     *     __vectors[] is in kern/trap/vector.S which is produced by
-     * tools/vector.c
-     *     (try "make" command in lab3, then you will find vector.S in kern/trap
-     * DIR)
-     *     You can use  "extern uintptr_t __vectors[];" to define this extern
-     * variable which will be used later.
-     * (2) Now you should setup the entries of ISR in Interrupt Description
-     * Table (IDT).
-     *     Can you see idt[256] in this file? Yes, it's IDT! you can use SETGATE
-     * macro to setup each item of IDT
-     * (3) After setup the contents of IDT, you will let CPU know where is the
-     * IDT by using 'lidt' instruction.
-     *     You don't know the meaning of this instruction? just google it! and
-     * check the libs/x86.h to know more.
-     *     Notice: the argument of lidt is idt_pd. try to find it!
+    /* (1) 每个中断服务例程（ISR）的入口地址在哪里？
+     *     所有 ISR 的入口地址都存储在 __vectors 中。那么 uintptr_t __vectors[] 在哪里？
+     *     __vectors[] 在 kern/trap/vector.S 文件中，这个文件由 tools/vector.c 生成。
+     *     （可以在 lab3 目录下执行 "make" 命令，然后你会在 kern/trap 目录下发现 vector.S 文件）
+     *     你可以用 "extern uintptr_t __vectors[];" 来定义这个外部变量，后面会用到。
+     * (2) 现在你需要在中断描述表（IDT）中设置 ISR 的入口。
+     *     你能在本文件中看到 idt[256] 吗？没错，这就是 IDT！你可以用 SETGATE 宏来设置 IDT 的每一项。
+     * (3) 设置好 IDT 的内容后，你需要通过 'lidt' 指令让 CPU 知道 IDT 的位置。
+     *     你不清楚这个指令的含义？去 Google 一下吧！也可以查看 libs/x86.h 了解更多信息。
+     *     注意：lidt 的参数是 idt_pd，试着找找它！
      */
-
     extern void __alltraps(void);
     /* Set sup0 scratch register to 0, indicating to exception vector
        that we are presently executing in the kernel */
