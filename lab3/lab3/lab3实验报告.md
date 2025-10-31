@@ -1,3 +1,5 @@
+# Lab3：中断与中断处理流程
+
 ## 练习1：完善中断处理
 
 ### 实现过程
@@ -8,6 +10,17 @@
 2. **计数器自增**：每次进入时钟中断时，将全局变量 `ticks` 自增，记录中断次数。
 3. **定期输出信息**：每当 `ticks` 达到 100 的倍数时，调用 `print_ticks()` 输出 "100 ticks" 信息，并将打印次数 `num` 自增。
 4. **自动关机**：当打印次数 `num` 达到 10 时，调用 `sbi_shutdown()` 实现自动关机，防止系统无限循环输出。
+
+```c++
+clock_set_next_event();//发生这次时钟中断的时候，我们要设置下一次时钟中断
+if (++ticks % TICK_NUM == 0) {
+    print_ticks();
+    num++; // 打印次数加一
+    if (num == 10) {
+        sbi_shutdown(); // 关机
+    }
+}
+```
 
 ### 定时器中断处理流程
 
@@ -24,31 +37,115 @@
 
 - 这样保证了时钟中断的周期性和实验的自动终止。
 
+### 结果展示：
+
+我们可以看到确实在打印了10个`100 ticks`之后，程序自己进行了中断。
+
+![练习1结果](练习1结果.png)
+
 ------
 
 ## Challenge1：描述与理解中断流程
 
-**ucore 中处理中断异常的流程如下：**
+### 一、中断异常处理的完整流程
 
-1. **异常产生**：当 CPU 执行过程中发生中断或异常（如时钟中断、非法指令等），硬件会自动跳转到异常入口（如 `stvec` 指定的地址）。
-2. **保存现场**：在 `trapentry.S` 的 `__alltraps` 入口，首先执行 `SAVE_ALL` 宏，将所有通用寄存器（包括 ra、sp、gp、tp、t0-t6、s0-s11、a0-a7）依次压入当前栈空间，形成 `struct pushregs` 的布局。
-3. **mov a0, sp 的目的**：将当前 sp（即保存好寄存器后的栈顶地址）传递给 C 语言的 trap 处理函数，作为 `struct trapframe *` 参数，方便 C 代码访问和修改保存的寄存器内容。
-4. **寄存器在栈中的位置**：由 `SAVE_ALL` 宏的压栈顺序和 `struct pushregs` 的定义顺序共同决定，保证 C 代码能正确通过偏移访问各寄存器的值。
-5. **是否需要保存所有寄存器**：理论上，为了保证异常返回后程序能无损恢复，**需要保存所有通用寄存器**。但对于某些特定异常或中断（如只会用到部分寄存器的陷入），可以只保存必要的寄存器。但 uCore 采用统一的 `SAVE_ALL`，简化了设计，避免遗漏。
+#### 1. 异常/中断的产生
+
+- 当发生中断（如时钟中断）或异常（如非法指令、断点）时，CPU硬件自动做以下事情：
+  - 将当前PC值保存到 `sepc` (Supervisor Exception Program Counter)
+  - 将异常/中断原因保存到 `scause` 寄存器
+  - 将出错地址保存到 `sbadaddr` 寄存器
+  - 将当前状态保存到 `sstatus` 寄存器
+  - 跳转到 `stvec` 寄存器指向的地址（即 `__alltraps`）
+
+#### 2. 进入 `__alltraps` (trapentry.S)
+
+```
+__alltraps:
+    SAVE_ALL              # 保存所有寄存器到栈中
+    move  a0, sp          # 将栈指针sp赋值给a0
+    jal trap              # 调用C函数trap()
+```
+
+#### 3. `SAVE_ALL` 宏展开（保存上下文）
+
+```
+csrw sscratch, sp         # 先将当前sp保存到sscratch
+addi sp, sp, -36*REGBYTES # 在栈上分配36个寄存器大小的空间
+STORE x0-x31...           # 保存32个通用寄存器
+csrr s0-s4, CSRs...       # 读取CSR寄存器到通用寄存器
+STORE s0-s4...            # 保存CSR寄存器值到栈
+```
+
+#### 4. 调用C函数(trap.c)
+
+```
+void trap(struct trapframe *tf) {
+    trap_dispatch(tf);    # 根据tf->cause分发处理
+}
+```
+
+#### 5. 分发到具体处理函数
+
+ trap_dispatch()检查tf->cause的最高位：
+
+- 最高位为1 → 中断 → `interrupt_handler()`
+- 最高位为0 → 异常 → `exception_handler()`
+
+### 二、`mov a0, sp` 的目的
+
+作用：将trapframe结构体的地址作为参数传递给C函数
+
+​	RISC-V调用约定：在RISC-V架构中，`a0` 寄存器用于传递函数的第一个参数。此时sp的含义：执行完 `SAVE_ALL` 后，`sp` 指向刚刚在栈上构造的 trapframe 结构体的起始地址。
+
+### 三、SAVE_ALL中寄存器在栈中的位置是如何确定的？
+
+由 trapframe 结构体的定义决定的，采用固定偏移量的方式
+
+```c++
+struct trapframe {
+    struct pushregs gpr;  // 32个通用寄存器 (offset: 0-31*REGBYTES)
+    uintptr_t status;     // sstatus (offset: 32*REGBYTES)
+    uintptr_t epc;        // sepc    (offset: 33*REGBYTES)
+    uintptr_t badvaddr;   // sbadaddr(offset: 34*REGBYTES)
+    uintptr_t cause;      // scause  (offset: 35*REGBYTES)
+};
+```
+
+### 四、是否所有中断都需要保存所有寄存器？
+
+是的，在ucore的设计中，所有中断都需要保存所有寄存器。理由如下：
+
+#### 1. 统一的中断入口
+
+项目中只有一个中断入口 `__alltraps`，这意味着：无论是时钟中断、非法指令、断点等任何中断/异常都会执行同一个 `SAVE_ALL` 宏，无法针对不同中断类型做选择性保存。
+
+#### 2. 无法预知中断处理的需求
+
+时钟中断看起来只需要几个寄存器，但实际上
+
+```c++
+clock_set_next_event();  // 可能修改多个寄存器
+cprintf("%d ticks\n");   // 函数调用会破坏临时寄存器
+```
 
 ------
 
 ## Challenge2：理解上下文切换机制
 
-**trapentry.S 中的 `csrw sscratch, sp` 和 `csrrw s0, sscratch, x0` 的作用：**
+#### `csrw sscratch, sp` 和 `csrrw s0, sscratch, x0` 实现了什么操作？
 
-- `csrw sscratch, sp`：将当前 sp（栈指针）保存到 sscratch CSR（控制状态寄存器）中。这样在陷入异常时，可以临时切换栈指针，防止破坏原有栈。
-- `csrrw s0, sscratch, x0`：将 sscratch 的值读到 s0 寄存器，并将 x0 写入 sscratch（即清空 sscratch）。这样可以恢复原来的 sp 值，实现栈的切换和恢复。
+```asm
+csrw sscratch, sp # 保存原先的栈顶指针到sscratch
+```
 
-**SAVE_ALL 里保存 stval、scause 等 CSR 的意义：**
+将当前的栈指针 `sp` 的值写入到 `sscratch` 寄存器中，临时保存中断发生时的栈顶指针。
 
-- 这些 CSR（如 stval、scause）保存了异常发生时的详细信息（如出错地址、异常原因），便于 C 代码分析和处理异常。
-- 在 `restore all` 时**不需要还原这些 CSR**，因为异常返回后，CPU 会自动恢复正常执行，不再需要这些异常信息。保存它们只是为了让 C 代码能读取和处理，而不是为了恢复硬件状态。
+```asm
+csrrw s0, sscratch, x0
+```
+
+这是一个原子交换操作，将 `sscratch` 的值读到 `s0` 寄存器（此时 `s0` 得到了原来的 `sp` 值），同时将 `x0`（恒为0）写入 `sscratch`。取回之前保存的原始 `sp` 值，以便保存到 trapFrame 中。
 
 ***
 

@@ -1267,24 +1267,32 @@ ffffffffc0200882:	100177f3          	csrrci	a5,sstatus,2
 ffffffffc0200886:	8082                	ret
 
 ffffffffc0200888 <idt_init>:
-     *     注意：lidt 的参数是 idt_pd，试着找找它！
-     */
+void idt_init(void) {
     extern void __alltraps(void);
     /* Set sup0 scratch register to 0, indicating to exception vector
-       that we are presently executing in the kernel */
+       that we are presently executing in the kernel 
+       统一的中断入口点，位于trapentry.S中*/
     write_csr(sscratch, 0);
 ffffffffc0200888:	14005073          	csrwi	sscratch,0
-    /* Set the exception vector address */
+    /* Set the exception vector address 
+    sscratch 是 RISC-V S模式(Supervisor mode)的临时寄存器
+    设置 sscratch 寄存器为 0，表示当前正在内核态执行
+    当中断发生时，__alltraps 会检查这个值来判断是从用户态还是内核态进入的中断*/
     write_csr(stvec, &__alltraps);
 ffffffffc020088c:	00000797          	auipc	a5,0x0
 ffffffffc0200890:	39078793          	addi	a5,a5,912 # ffffffffc0200c1c <__alltraps>
 ffffffffc0200894:	10579073          	csrw	stvec,a5
+    /*
+    stvec (Supervisor Trap Vector Base Address Register) 是中断向量基址寄存器
+    将其设置为 __alltraps 的地址
+    这是最关键的一步：告诉 CPU "当发生任何中断或异常时，跳转到 __alltraps 这个地址执行"
+    */
 }
 ffffffffc0200898:	8082                	ret
 
 ffffffffc020089a <print_regs>:
-    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);
-    cprintf("  cause    0x%08x\n", tf->cause);
+    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);//出错地址
+    cprintf("  cause    0x%08x\n", tf->cause);//异常/中断原因码
 }
 
 void print_regs(struct pushregs *gpr) {
@@ -1482,32 +1490,32 @@ ffffffffc0200a7a:	eacff0ef          	jal	ra,ffffffffc0200126 <cprintf>
     print_regs(&tf->gpr);
 ffffffffc0200a7e:	8522                	mv	a0,s0
 ffffffffc0200a80:	e1bff0ef          	jal	ra,ffffffffc020089a <print_regs>
-    cprintf("  status   0x%08x\n", tf->status);
+    cprintf("  status   0x%08x\n", tf->status);//CPU状态寄存器
 ffffffffc0200a84:	10043583          	ld	a1,256(s0)
 ffffffffc0200a88:	00002517          	auipc	a0,0x2
 ffffffffc0200a8c:	d1050513          	addi	a0,a0,-752 # ffffffffc0202798 <commands+0x4f0>
 ffffffffc0200a90:	e96ff0ef          	jal	ra,ffffffffc0200126 <cprintf>
-    cprintf("  epc      0x%08x\n", tf->epc);
+    cprintf("  epc      0x%08x\n", tf->epc);//异常发生时的PC
 ffffffffc0200a94:	10843583          	ld	a1,264(s0)
 ffffffffc0200a98:	00002517          	auipc	a0,0x2
 ffffffffc0200a9c:	d1850513          	addi	a0,a0,-744 # ffffffffc02027b0 <commands+0x508>
 ffffffffc0200aa0:	e86ff0ef          	jal	ra,ffffffffc0200126 <cprintf>
-    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);
+    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);//出错地址
 ffffffffc0200aa4:	11043583          	ld	a1,272(s0)
 ffffffffc0200aa8:	00002517          	auipc	a0,0x2
 ffffffffc0200aac:	d2050513          	addi	a0,a0,-736 # ffffffffc02027c8 <commands+0x520>
 ffffffffc0200ab0:	e76ff0ef          	jal	ra,ffffffffc0200126 <cprintf>
-    cprintf("  cause    0x%08x\n", tf->cause);
+    cprintf("  cause    0x%08x\n", tf->cause);//异常/中断原因码
 ffffffffc0200ab4:	11843583          	ld	a1,280(s0)
 }
 ffffffffc0200ab8:	6402                	ld	s0,0(sp)
 ffffffffc0200aba:	60a2                	ld	ra,8(sp)
-    cprintf("  cause    0x%08x\n", tf->cause);
+    cprintf("  cause    0x%08x\n", tf->cause);//异常/中断原因码
 ffffffffc0200abc:	00002517          	auipc	a0,0x2
 ffffffffc0200ac0:	d2450513          	addi	a0,a0,-732 # ffffffffc02027e0 <commands+0x538>
 }
 ffffffffc0200ac4:	0141                	addi	sp,sp,16
-    cprintf("  cause    0x%08x\n", tf->cause);
+    cprintf("  cause    0x%08x\n", tf->cause);//异常/中断原因码
 ffffffffc0200ac6:	e60ff06f          	j	ffffffffc0200126 <cprintf>
 
 ffffffffc0200aca <interrupt_handler>:
@@ -1528,24 +1536,24 @@ ffffffffc0200ae6:	97ba                	add	a5,a5,a4
 ffffffffc0200ae8:	8782                	jr	a5
             break;
         case IRQ_H_SOFT:
-            cprintf("Hypervisor software interrupt\n");
+            cprintf("Hypervisor software interrupt\n");//超级管理器（H态）中断
             break;
         case IRQ_M_SOFT:
-            cprintf("Machine software interrupt\n");
+            cprintf("Machine software interrupt\n");//机器模式中断
 ffffffffc0200aea:	00002517          	auipc	a0,0x2
 ffffffffc0200aee:	d6e50513          	addi	a0,a0,-658 # ffffffffc0202858 <commands+0x5b0>
 ffffffffc0200af2:	e34ff06f          	j	ffffffffc0200126 <cprintf>
-            cprintf("Hypervisor software interrupt\n");
+            cprintf("Hypervisor software interrupt\n");//超级管理器（H态）中断
 ffffffffc0200af6:	00002517          	auipc	a0,0x2
 ffffffffc0200afa:	d4250513          	addi	a0,a0,-702 # ffffffffc0202838 <commands+0x590>
 ffffffffc0200afe:	e28ff06f          	j	ffffffffc0200126 <cprintf>
-            cprintf("User software interrupt\n");
+            cprintf("User software interrupt\n");//用户态中断
 ffffffffc0200b02:	00002517          	auipc	a0,0x2
 ffffffffc0200b06:	cf650513          	addi	a0,a0,-778 # ffffffffc02027f8 <commands+0x550>
 ffffffffc0200b0a:	e1cff06f          	j	ffffffffc0200126 <cprintf>
             break;
         case IRQ_U_TIMER:
-            cprintf("User Timer interrupt\n");
+            cprintf("User Timer interrupt\n");//用户态定时器中断
 ffffffffc0200b0e:	00002517          	auipc	a0,0x2
 ffffffffc0200b12:	d6a50513          	addi	a0,a0,-662 # ffffffffc0202878 <commands+0x5d0>
 ffffffffc0200b16:	e10ff06f          	j	ffffffffc0200126 <cprintf>
@@ -1581,7 +1589,7 @@ ffffffffc0200b3e:	8082                	ret
 ffffffffc0200b40:	00002517          	auipc	a0,0x2
 ffffffffc0200b44:	d6050513          	addi	a0,a0,-672 # ffffffffc02028a0 <commands+0x5f8>
 ffffffffc0200b48:	ddeff06f          	j	ffffffffc0200126 <cprintf>
-            cprintf("Supervisor software interrupt\n");
+            cprintf("Supervisor software interrupt\n");//内核态中断
 ffffffffc0200b4c:	00002517          	auipc	a0,0x2
 ffffffffc0200b50:	ccc50513          	addi	a0,a0,-820 # ffffffffc0202818 <commands+0x570>
 ffffffffc0200b54:	dd2ff06f          	j	ffffffffc0200126 <cprintf>
@@ -1688,7 +1696,10 @@ ffffffffc0200c0c:	0141                	addi	sp,sp,16
 ffffffffc0200c0e:	8082                	ret
 
 ffffffffc0200c10 <trap>:
-
+/*
+tf->cause < 0：最高位为 1，表示是中断（interrupt），调用 interrupt_handler 处理
+tf->cause >= 0：最高位为 0，表示是异常（exception），调用 exception_handler 处理
+*/
 static inline void trap_dispatch(struct trapframe *tf) {
     if ((intptr_t)tf->cause < 0) {
 ffffffffc0200c10:	11853783          	ld	a5,280(a0)

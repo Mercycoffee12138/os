@@ -27,13 +27,26 @@ static void print_ticks() {
 void idt_init(void) {
     extern void __alltraps(void);
     /* Set sup0 scratch register to 0, indicating to exception vector
-       that we are presently executing in the kernel */
+       that we are presently executing in the kernel 
+       统一的中断入口点，位于trapentry.S中*/
     write_csr(sscratch, 0);
-    /* Set the exception vector address */
+    /* Set the exception vector address 
+    sscratch 是 RISC-V S模式(Supervisor mode)的临时寄存器
+    设置 sscratch 寄存器为 0，表示当前正在内核态执行
+    当中断发生时，__alltraps 会检查这个值来判断是从用户态还是内核态进入的中断*/
     write_csr(stvec, &__alltraps);
+    /*
+    stvec (Supervisor Trap Vector Base Address Register) 是中断向量基址寄存器
+    将其设置为 __alltraps 的地址
+    这是最关键的一步：告诉 CPU "当发生任何中断或异常时，跳转到 __alltraps 这个地址执行"
+    */
 }
 
-/* trap_in_kernel - test if trap happened in kernel */
+/* trap_in_kernel - test if trap happened in kernel用来判断“当前发生的中断/异常是不是在内核态发生的
+tf->status 里有一位叫 SSTATUS_SPP（Supervisor Previous Privilege），
+如果 SPP=1，表示中断发生前 CPU 处于内核态（S 态，supervisor mode）。
+如果 SPP=0，表示中断发生前 CPU 处于用户态（U 态，user mode）。
+*/
 bool trap_in_kernel(struct trapframe *tf) {
     return (tf->status & SSTATUS_SPP) != 0;
 }
@@ -41,10 +54,10 @@ bool trap_in_kernel(struct trapframe *tf) {
 void print_trapframe(struct trapframe *tf) {
     cprintf("trapframe at %p\n", tf);
     print_regs(&tf->gpr);
-    cprintf("  status   0x%08x\n", tf->status);
-    cprintf("  epc      0x%08x\n", tf->epc);
-    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);
-    cprintf("  cause    0x%08x\n", tf->cause);
+    cprintf("  status   0x%08x\n", tf->status);//CPU状态寄存器
+    cprintf("  epc      0x%08x\n", tf->epc);//异常发生时的PC
+    cprintf("  badvaddr 0x%08x\n", tf->badvaddr);//出错地址
+    cprintf("  cause    0x%08x\n", tf->cause);//异常/中断原因码
 }
 
 void print_regs(struct pushregs *gpr) {
@@ -86,19 +99,19 @@ void interrupt_handler(struct trapframe *tf) {
     intptr_t cause = (tf->cause << 1) >> 1;
     switch (cause) {
         case IRQ_U_SOFT:
-            cprintf("User software interrupt\n");
+            cprintf("User software interrupt\n");//用户态中断
             break;
         case IRQ_S_SOFT:
-            cprintf("Supervisor software interrupt\n");
+            cprintf("Supervisor software interrupt\n");//内核态中断
             break;
         case IRQ_H_SOFT:
-            cprintf("Hypervisor software interrupt\n");
+            cprintf("Hypervisor software interrupt\n");//超级管理器（H态）中断
             break;
         case IRQ_M_SOFT:
-            cprintf("Machine software interrupt\n");
+            cprintf("Machine software interrupt\n");//机器模式中断
             break;
         case IRQ_U_TIMER:
-            cprintf("User Timer interrupt\n");
+            cprintf("User Timer interrupt\n");//用户态定时器中断
             break;
         case IRQ_S_TIMER:
             // "All bits besides SSIP and USIP in the sip register are
@@ -196,7 +209,10 @@ void exception_handler(struct trapframe *tf) {
             break;
     }
 }
-
+/*
+tf->cause < 0：最高位为 1，表示是中断（interrupt），调用 interrupt_handler 处理
+tf->cause >= 0：最高位为 0，表示是异常（exception），调用 exception_handler 处理
+*/
 static inline void trap_dispatch(struct trapframe *tf) {
     if ((intptr_t)tf->cause < 0) {
         // interrupts
@@ -212,6 +228,7 @@ static inline void trap_dispatch(struct trapframe *tf) {
  * returns,
  * the code in kern/trap/trapentry.S restores the old CPU state saved in the
  * trapframe and then uses the iret instruction to return from the exception.
+ *trap() 是内核处理中断和异常的总调度入口。
  * */
 void trap(struct trapframe *tf) {
     // dispatch based on what type of trap occurred
