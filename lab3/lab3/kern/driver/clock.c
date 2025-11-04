@@ -40,7 +40,7 @@ void clock_init(void) {
     // sie这个CSR可以单独使能/禁用某个来源的中断。默认时钟中断是关闭的
     // 所以我们要在初始化的时候，使能时钟中断
     set_csr(sie, MIP_STIP); // enable timer interrupt in sie
-    //设置第一个时钟中断事件
+    //设置第一个时钟中断事件，在SIE中设置允许定时器中断
     clock_set_next_event();
     // 初始化一个计数器
     ticks = 0;
