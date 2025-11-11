@@ -88,7 +88,7 @@ alloc_proc(void)
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL)
     {
-        // LAB4:EXERCISE1 YOUR CODE
+        // LAB4:EXERCISE1 2311082
         /*
          * below fields in proc_struct need to be initialized
          *       enum proc_state state;                      // Process state
@@ -104,7 +104,19 @@ alloc_proc(void)
          *       uint32_t flags;                             // Process flag
          *       char name[PROC_NAME_LEN + 1];               // Process name
          */
-        
+        /* 初始化一个新的进程控制块的最基本字段，不进行资源分配 */
+        proc->state = PROC_UNINIT;        // 尚未进入就绪态
+        proc->pid = -1;                   // 真实 pid 之后由 get_pid 分配
+        proc->runs = 0;                   // 运行次数计数器清零
+        proc->kstack = 0;                 // 还未分配内核栈
+        proc->need_resched = 0;           // 默认不请求调度
+        proc->parent = NULL;              // 父进程待后续设置
+        proc->mm = NULL;                  // 地址空间后续 copy/share
+        memset(&proc->context, 0, sizeof(struct context)); // 确保首次 switch_to 有确定值
+        proc->tf = NULL;                  // trapframe 等栈建立后 copy_thread 设置
+        proc->pgdir = boot_pgdir_pa;      // 先使用内核页表基址
+        proc->flags = 0;                  // 初始无标志
+        memset(proc->name, 0, sizeof(proc->name)); // 进程名清零，后续 set_proc_name
     }
     return proc;
 }
