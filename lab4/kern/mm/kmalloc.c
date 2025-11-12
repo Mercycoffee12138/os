@@ -89,7 +89,7 @@ static void *__slob_get_free_pages(gfp_t gfp, int order)
 
 static inline void __slob_free_pages(unsigned long kva, int order)
 {
-	free_pages(kva2page(kva), 1 << order);
+	free_pages(kva2page((void *)kva), 1 << order);	//2310137 这里改了一下，kva 是 unsigned long 类型，但 kva2page 需要的是 void * 类型修改参数
 }
 
 static void slob_free(void *b, int size);

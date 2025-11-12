@@ -46,7 +46,10 @@ struct proc_struct
     int runs;                     // the running times of Proces
     uintptr_t kstack;             // Process kernel stack
     volatile bool need_resched;   // bool value: need to be rescheduled to release CPU?
-    struct proc_struct *parent;   // the parent process
+    struct proc_struct *parent;   // 父进程
+    struct proc_struct *cptr;     // 第一个子进程
+    struct proc_struct *optr;     // 下一个兄弟进程
+    struct proc_struct *yptr;     // 上一个兄弟进程
     struct mm_struct *mm;         // Process's memory management field
     struct context context;       // Switch here to run process
     struct trapframe *tf;         // Trap frame for current interrupt
