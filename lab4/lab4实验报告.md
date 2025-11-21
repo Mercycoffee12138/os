@@ -264,3 +264,120 @@ To U: "en.., Bye, Bye. :)"                    // init_main 执行完毕
 kernel panic at kern/process/proc.c:400:      // do_exit 还未实现
     process exit!!.
 ```
+
+## Challenge 1：中断开关机制的实现
+
+### 扩展练习 Challenge：说明语句 local_intr_save(intr_flag);....local_intr_restore(intr_flag); 是如何实现开关中断的？
+
+**答：** `local_intr_save` 和 `local_intr_restore` 通过操作 RISC-V 处理器的 sstatus 寄存器中的 SIE（Supervisor Interrupt Enable）位来实现中断的开关。
+
+在 kern/sync/sync.h 中定义了这两个宏：
+
+```c
+#define local_intr_save(x) \
+    do {                   \
+        x = __intr_save(); \
+    } while (0)
+#define local_intr_restore(x) __intr_restore(x);
+```
+
+`__intr_save()` 函数首先读取当前的 sstatus 寄存器状态，检查 SSTATUS_SIE 位是否被设置（表示中断当前是否被启用）。如果 SIE 位为 1（中断已启用），则调用 `intr_disable()` 关闭中断，并返回 1 来记录之前的状态；如果 SIE 位为 0（中断已禁用），则直接返回 0。这样做的目的是保存当前的中断状态：
+
+```c
+static inline bool __intr_save(void) {
+    if (read_csr(sstatus) & SSTATUS_SIE) {
+        intr_disable();
+        return 1;
+    }
+    return 0;
+}
+```
+
+而在 kern/driver/intr.c 中，`intr_disable()` 通过清除 sstatus 寄存器中的 SSTATUS_SIE 位来禁用中断：
+
+```c
+void intr_disable(void) { clear_csr(sstatus, SSTATUS_SIE); }
+```
+
+对应地，`intr_enable()` 则设置 SSTATUS_SIE 位来启用中断：
+
+```c
+void intr_enable(void) { set_csr(sstatus, SSTATUS_SIE); }
+```
+
+而 `__intr_restore()` 函数接收之前保存的中断状态标志。如果标志为 1，说明之前中断是启用的，则调用 `intr_enable()` 恢复中断；如果标志为 0，说明之前中断已被禁用，则什么都不做，保持禁用状态：
+
+```c
+static inline void __intr_restore(bool flag) {
+    if (flag) {
+        intr_enable();
+    }
+}
+```
+
+这样的设计使得 `local_intr_save` 和 `local_intr_restore` 构成了一对嵌套安全的中断保护机制。在临界区代码执行前调用 `local_intr_save(intr_flag)` 保存当前中断状态并关闭中断，保证临界区内的操作不会被中断打断；临界区执行完毕后调用 `local_intr_restore(intr_flag)` 恢复之前的中断状态。这样即使在嵌套调用的情况下也能正确处理：如果外层调用前中断是禁用的，即使内层打开了中断，外层的 `local_intr_restore` 也会再次关闭它。这种机制广泛应用在 pmm.c 的 `alloc_pages`、`free_pages`、`nr_free_pages` 等函数中，以及 proc.c 的 `proc_run` 函数中，保证内存管理和进程调度的原子性。
+
+## Challenge 2：深入理解分页机制与 get_pte 函数设计
+
+### Challenge：深入理解不同分页模式的工作原理和 get_pte 函数设计
+
+**第一部分：不同分页模式的工作原理分析**
+
+答：RISC-V 体系结构支持多种分页模式，包括 sv32、sv39 和 sv48。这些模式的共同目标都是将虚拟地址映射到物理地址，但采用的页表级数和寻址范围不同。sv32 适用于 32 位系统，使用两级页表；sv39 和 sv48 适用于 64 位系统，分别使用三级和四级页表。本实验中的 uCore 采用 sv39 模式，这是当前 RISC-V 系统的主流选择。
+
+在 sv39 中，64 位虚拟地址被分为若干部分：高 25 位用于符号扩展，接下来的 39 位被分为三个 9 位的索引字段（分别对应第 1、第 0 级和页内偏移），以及最后 12 位的页内偏移。虚拟地址到物理地址的转换过程是一个多级页表的查询过程：首先使用虚拟地址的高位索引在第 1 级页表（也称为页目录表）中查找条目，该条目指向下一级页表的物理地址；然后使用虚拟地址的中间位索引在第 0 级页表中继续查找，最后得到物理页面的地址，与虚拟地址的页内偏移部分组合得到最终的物理地址。
+
+在 kern/mm/pmm.c 的 `get_pte()` 函数中，这个多级查询过程被清晰地实现了。第一段代码使用 PDX1(la) 在第 1 级页表（页目录表）中查找对应条目，检查该条目的有效位 PTE_V；如果无效且 create 为真，则分配一个新的第 0 级页表页面，设置其有效位并将其物理地址存储在第 1 级页表条目中：
+
+```c
+pde_t *pdep1 = &pgdir[PDX1(la)];
+if (!(*pdep1 & PTE_V)) {
+    struct Page *page;
+    if (!create || (page = alloc_page()) == NULL) {
+        return NULL;
+    }
+    set_page_ref(page, 1);
+    uintptr_t pa = page2pa(page);
+    memset(KADDR(pa), 0, PGSIZE);
+    *pdep1 = pte_create(page2ppn(page), PTE_U | PTE_V);
+}
+```
+
+第二段代码的逻辑与第一段完全相同，只是操作的是下一级页表。它使用 PDX0(la) 在第 0 级页表中查找最终的页表项，检查该条目的有效位；如果无效且 create 为真，则分配一个新的物理页面，并将其物理地址存储在第 0 级页表条目中：
+
+```c
+pde_t *pdep0 = &((pde_t *)KADDR(PDE_ADDR(*pdep1)))[PDX0(la)];
+if (!(*pdep0 & PTE_V)) {
+    struct Page *page;
+    if (!create || (page = alloc_page()) == NULL) {
+        return NULL;
+    }
+    set_page_ref(page, 1);
+    uintptr_t pa = page2pa(page);
+    memset(KADDR(pa), 0, PGSIZE);
+    *pdep0 = pte_create(page2ppn(page), PTE_U | PTE_V);
+}
+```
+
+这两段代码之所以相似，正是因为 sv32、sv39、sv48 等模式都采用了相同的设计思想：多级页表的每一级都遵循相同的查询逻辑——检查当前级别的页表项的有效位（PTE_V），如果有效则继续向下查询，否则按需分配新的下一级页表。无论是两级、三级还是四级页表，这个逻辑都是一致的，只是级数不同而已。这体现了分页机制设计的优雅之处：通过统一的多级索引方案，支持不同大小的虚拟地址空间，而核心的页表遍历算法保持不变。
+
+**第二部分：get_pte() 函数设计评价**
+
+关于将查找和分配合并在一个函数中的设计，这种写法各有利弊，需要根据具体的系统设计哲学来权衡。
+
+从优点来看，将查找和分配合并在 `get_pte()` 中确实提高了代码的便利性和简洁性。以 `page_insert()` 为例，当我们需要为某个虚拟地址建立映射关系时，只需调用一次 `get_pte(pgdir, la, 1)`，就能自动完成整个多级页表的导航过程，包括按需创建中间级的页表。这使得调用者的代码更加简洁：
+
+```c
+pte_t *ptep = get_pte(pgdir, la, 1);
+if (ptep == NULL) {
+    return -E_NO_MEM;
+}
+```
+
+如果要实现"纯查询"功能，`get_pte()` 也通过引入 `create` 参数优雅地支持了这种需求。在 `page_remove()` 中，我们调用 `get_pte(pgdir, la, 0)` 来查询页表项，如果页表不存在就返回 NULL，而不会触发任何分配逻辑，这正是我们只想查询而不想创建的需求。
+
+从代码可读性和维护性角度看，`get_pte()` 的单一职责原则被某种程度上违反了。函数同时承担了"查找"和"分配"两项职责，增加了代码的复杂度。当出现页表相关的问题时，需要理解整个多级分配流程才能诊断。此外，如果后续需要修改分配策略或实现更复杂的页表管理（如支持大页面、NUMA感知的分配等），就需要修改 `get_pte()` 函数本身，这会影响所有依赖它的代码。
+
+综合来看，**在当前的 uCore 实验环境中，这种合并的设计是合理的**，理由如下：首先，分配策略相对固定且明确，不太可能频繁变更；其次，通过 `create` 参数已经实现了有效的功能分化，满足了不同场景的需求；再次，代码的便利性带来的益处在相对简单的系统中更为显著。
+
+然而，**如果系统演化到更复杂的阶段，就可能有必要拆分**。例如：如果需要支持多种内存分配策略（如优先级分配、NUMA感知分配等），就应该抽取分配逻辑独立出来；如果为了提高代码的可测试性，需要独立测试查找逻辑和分配逻辑，也应该拆分；如果需要更细粒度的控制，比如查询页表而不触发任何副作用，就需要分离出一个纯查询函数。具体的拆分方案可以考虑设计一个 `get_pte_lookup()` 函数用于纯查询（不分配任何页表），一个 `get_pte_or_alloc()` 函数用于查询或分配，这样可以让代码的意图更明确，模块化更好。但对于当前的实验需求，现有的统一设计已经足够高效和优雅了。
