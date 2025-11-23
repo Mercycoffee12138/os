@@ -3,7 +3,9 @@
         "buddy_pmm.h": "c",
         "stdio.h": "c",
         "string.h": "c",
-        "memlayout.h": "c"
+        "memlayout.h": "c",
+        "sbi.h": "c",
+        "sync.h": "c"
     },
     "cmake.sourceDirectory": "D:/study/os/labcode/原始代码/lab4"
 }

@@ -18,6 +18,7 @@
 
 #define TICK_NUM 100
 
+static int num = 0; // 打印次数计数器
 static void print_ticks()
 {
     cprintf("%d ticks\n", TICK_NUM);
@@ -127,6 +128,15 @@ void interrupt_handler(struct trapframe *tf)
          *(3)当计数器加到100的时候，我们会输出一个`100ticks`表示我们触发了100次时钟中断，同时打印次数（num）加一
          * (4)判断打印次数，当打印次数为10时，调用<sbi.h>中的关机函数关机
          */
+        clock_set_next_event();//发生这次时钟中断的时候，我们要设置下一次时钟中断
+            if (++ticks % TICK_NUM == 0) {
+                print_ticks();
+                num++; // 打印次数加一
+                if (num == 10) {
+                    sbi_shutdown(); // 关机
+                }
+            }
+            break;
         break;
     case IRQ_H_TIMER:
         cprintf("Hypervisor software interrupt\n");
@@ -164,6 +174,11 @@ void exception_handler(struct trapframe *tf)
         cprintf("Instruction access fault\n");
         break;
     case CAUSE_ILLEGAL_INSTRUCTION:
+            cprintf("Exception type: Illegal instruction\n");
+            cprintf("Illegal instruction caught at 0x%08x\n", tf->epc);
+            // 更新 epc 寄存器，跳过非法指令（假设指令长度为4字节）
+            tf->epc += 4;
+            break;
         cprintf("Illegal instruction\n");
         break;
     case CAUSE_BREAKPOINT:

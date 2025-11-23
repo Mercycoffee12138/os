@@ -106,12 +106,30 @@ alloc_proc(void)
          *       char name[PROC_NAME_LEN + 1];               // Process name
          */
 
-        // LAB5 YOUR CODE : (update LAB4 steps)
+        // LAB5 YOUR CODE : (update LAB4 steps) 2311082
         /*
          * below fields(add in LAB5) in proc_struct need to be initialized
          *       uint32_t wait_state;                        // waiting state
          *       struct proc_struct *cptr, *yptr, *optr;     // relations between processes
          */
+        /* 初始化一个新的进程控制块的最基本字段，不进行资源分配 */
+        proc->state = PROC_UNINIT;        // 尚未进入就绪态
+        proc->pid = -1;                   // 真实 pid 之后由 get_pid 分配
+        proc->runs = 0;                   // 运行次数计数器清零
+        proc->kstack = 0;                 // 还未分配内核栈
+        proc->need_resched = 0;           // 默认不请求调度
+        proc->parent = NULL;              // 父进程待后续设置
+        proc->mm = NULL;                  // 地址空间后续 copy/share
+        memset(&proc->context, 0, sizeof(struct context)); // 确保首次 switch_to 有确定值
+        proc->tf = NULL;                  // trapframe 等栈建立后 copy_thread 设置
+        proc->pgdir = boot_pgdir_pa;      // 先使用内核页表基址
+        proc->flags = 0;                  // 初始无标志
+        memset(proc->name, 0, sizeof(proc->name)); // 进程名清零，后续 set_proc_name
+
+        // LAB5: 初始化新增字段
+        proc->exit_code = 0;              // 退出码初始化为0
+        proc->wait_state = 0;             // 等待状态初始化为0
+        proc->cptr = proc->yptr = proc->optr = NULL; // 进程关系指针初始化为NULL
     }
     return proc;
 }
@@ -225,6 +243,15 @@ void proc_run(struct proc_struct *proc)
          *   lsatp():                   Modify the value of satp register
          *   switch_to():              Context switching between two processes
          */
+        bool intr_flag;
+        local_intr_save(intr_flag);
+        {
+            struct proc_struct *prev = current;
+            current = proc;
+            lsatp(proc->pgdir);
+            switch_to(&(prev->context), &(proc->context));
+        }
+        local_intr_restore(intr_flag);
     }
 }
 
@@ -442,6 +469,34 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
      *    update step 1: set child proc's parent to current process, make sure current process's wait_state is 0
      *    update step 5: insert proc_struct into hash_list && proc_list, set the relation links of process
      */
+        if ((proc = alloc_proc()) == NULL)
+    {
+        goto fork_out;
+    }
+
+    // LAB5: Step 1 - set parent and ensure wait_state is 0
+    proc->parent = current;
+
+    if ((ret = setup_kstack(proc)) != 0)
+    {
+        goto bad_fork_cleanup_proc;
+    }
+
+    if ((ret = copy_mm(clone_flags, proc)) != 0)
+    {
+        goto bad_fork_cleanup_kstack;
+    }
+
+    copy_thread(proc, stack, tf);
+
+    // LAB5: Step 5 - insert into hash_list and set process relation links
+    proc->pid = get_pid();
+    hash_proc(proc);
+    set_links(proc);
+
+    wakeup_proc(proc);
+
+    ret = proc->pid;
 
 fork_out:
     return ret;
@@ -940,6 +995,7 @@ void proc_init(void)
     idleproc->kstack = (uintptr_t)bootstack;
     idleproc->need_resched = 1;
     set_proc_name(idleproc, "idle");
+    list_add(&proc_list, &(idleproc->list_link));
     nr_process++;
 
     current = idleproc;
