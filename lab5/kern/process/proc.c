@@ -341,7 +341,19 @@ setup_pgdir(struct mm_struct *mm)
         return -E_NO_MEM;
     }
     pde_t *pgdir = page2kva(page);
+    
+    // 确保 boot_pgdir_va 有效
+    if (boot_pgdir_va == NULL) {
+        cprintf("[ERROR] setup_pgdir: boot_pgdir_va is NULL\n");
+        free_page(page);
+        return -E_INVAL;
+    }
+    
     memcpy(pgdir, boot_pgdir_va, PGSIZE);
+    
+    // 添加验证
+    cprintf("[DEBUG] setup_pgdir: new pgdir=%p, boot_pgdir_va=%p\n", 
+            pgdir, boot_pgdir_va);
 
     mm->pgdir = pgdir;
     return 0;
@@ -397,6 +409,13 @@ good_mm:
     cprintf("[DEBUG] copy_mm: mm->pgdir=%p (before PADDR)\n", mm->pgdir);
     proc->pgdir = PADDR(mm->pgdir);
     cprintf("[DEBUG] copy_mm: proc->pgdir=%p (after PADDR)\n", proc->pgdir);
+
+    // 添加验证：确保转换后的物理地址有效
+    // if (proc->pgdir == 0) {
+    //     cprintf("[ERROR] copy_mm: Invalid pgdir after PADDR\n");
+    //     ret = -E_INVAL;
+    //     goto bad_dup_cleanup_mmap;
+    // }
     return 0;
 bad_dup_cleanup_mmap:
     exit_mmap(mm);

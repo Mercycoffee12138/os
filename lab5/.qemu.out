@@ -31,10 +31,10 @@ DTB init completed
 
 Special kernel symbols:
   entry  0xc020004a (virtual)
-  etext  0xc02057b8 (virtual)
-  edata  0xc02a6250 (virtual)
-  end    0xc02aa6fc (virtual)
-Kernel executable memory footprint: 682KB
+  etext  0xc02057f6 (virtual)
+  edata  0xc02a63f8 (virtual)
+  end    0xc02aa8a4 (virtual)
+Kernel executable memory footprint: 683KB
 memory management: default_pmm_manager
 physcial memory map:
   memory: 0x08000000, [0x80000000, 0x87ffffff].
@@ -51,238 +51,1112 @@ check_vmm() succeeded.
 [DEBUG] proc_run: proc->pgdir=0x8020a000, calling lsatp
 kernel_execve: pid = 2, name = "forktest".
 Breakpoint
-[DEBUG] setup_pgdir: page=0xffffffffc02bdc40, pgdir(kva)=0xffffffffc04b1000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04b1000
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04b1000, boot_pgdir_va=0xffffffffc020a000
 [DEBUG] load_icode: mm->pgdir=0xffffffffc04b1000 (before PADDR)
 [DEBUG] load_icode: current->pgdir=0x804b1000 (after PADDR)
-[DEBUG] setup_pgdir: page=0xffffffffc02bdf40, pgdir(kva)=0xffffffffc04bd000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04bd000
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04bd000, boot_pgdir_va=0xffffffffc020a000
 [DEBUG] copy_mm: mm->pgdir=0xffffffffc04bd000 (before PADDR)
 [DEBUG] copy_mm: proc->pgdir=0x804bd000 (after PADDR)
 [DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
-I am child 0
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bdfc0, pgdir(kva)=0xffffffffc04bf000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04bf000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04bf000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804bf000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
-I am child 1
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be040, pgdir(kva)=0xffffffffc04c1000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04c1000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04c1000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804c1000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804c1000, calling lsatp
-I am child 2
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be0c0, pgdir(kva)=0xffffffffc04c3000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04c3000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04c3000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804c3000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804c3000, calling lsatp
-I am child 3
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be140, pgdir(kva)=0xffffffffc04c5000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04c5000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04c5000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804c5000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804c5000, calling lsatp
-I am child 4
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be1c0, pgdir(kva)=0xffffffffc04c7000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04c7000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04c7000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804c7000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804c7000, calling lsatp
-I am child 5
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be240, pgdir(kva)=0xffffffffc04c9000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04c9000
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04c9000, boot_pgdir_va=0xffffffffc020a000
 [DEBUG] copy_mm: mm->pgdir=0xffffffffc04c9000 (before PADDR)
 [DEBUG] copy_mm: proc->pgdir=0x804c9000 (after PADDR)
 [DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
-I am child 6
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be2c0, pgdir(kva)=0xffffffffc04cb000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04cb000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04cb000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804cb000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804cb000, calling lsatp
-I am child 7
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be340, pgdir(kva)=0xffffffffc04cd000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04cd000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04cd000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804cd000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804cd000, calling lsatp
-I am child 8
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be3c0, pgdir(kva)=0xffffffffc04cf000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04cf000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04cf000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804cf000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804cf000, calling lsatp
-I am child 9
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be440, pgdir(kva)=0xffffffffc04d1000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04d1000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04d1000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804d1000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804d1000, calling lsatp
-I am child 10
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be4c0, pgdir(kva)=0xffffffffc04d3000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04d3000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04d3000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804d3000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804d3000, calling lsatp
-I am child 11
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be540, pgdir(kva)=0xffffffffc04d5000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04d5000
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04d5000, boot_pgdir_va=0xffffffffc020a000
 [DEBUG] copy_mm: mm->pgdir=0xffffffffc04d5000 (before PADDR)
 [DEBUG] copy_mm: proc->pgdir=0x804d5000 (after PADDR)
 [DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
-I am child 12
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be5c0, pgdir(kva)=0xffffffffc04d7000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04d7000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04d7000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804d7000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804d7000, calling lsatp
-I am child 13
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be640, pgdir(kva)=0xffffffffc04d9000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04d9000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04d9000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804d9000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804d9000, calling lsatp
-I am child 14
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be6c0, pgdir(kva)=0xffffffffc04db000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04db000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04db000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804db000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804db000, calling lsatp
-I am child 15
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be740, pgdir(kva)=0xffffffffc04dd000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04dd000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04dd000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804dd000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804dd000, calling lsatp
-I am child 16
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be7c0, pgdir(kva)=0xffffffffc04df000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04df000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04df000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804df000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804df000, calling lsatp
-I am child 17
-[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be840, pgdir(kva)=0xffffffffc04e1000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04e1000
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04e1000, boot_pgdir_va=0xffffffffc020a000
 [DEBUG] copy_mm: mm->pgdir=0xffffffffc04e1000 (before PADDR)
 [DEBUG] copy_mm: proc->pgdir=0x804e1000 (after PADDR)
 [DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
-I am child 18
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04ed000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc04ed000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x804ed000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be8c0, pgdir(kva)=0xffffffffc04e3000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04e3000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04e3000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804e3000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804e3000, calling lsatp
-I am child 19
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04f9000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f9000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x804f9000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be940, pgdir(kva)=0xffffffffc04e5000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04e5000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04e5000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804e5000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804e5000, calling lsatp
-I am child 20
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0505000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0505000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80505000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0511000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0511000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80511000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc051d000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc051d000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x8051d000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0529000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0529000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80529000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0535000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0535000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80535000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0541000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0541000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80541000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02be9c0, pgdir(kva)=0xffffffffc04e7000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04e7000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04e7000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804e7000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804e7000, calling lsatp
-I am child 21
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc054d000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc054d000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x8054d000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0559000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0559000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80559000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bea40, pgdir(kva)=0xffffffffc04e9000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04e9000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04e9000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804e9000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804e9000, calling lsatp
-I am child 22
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0566000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0566000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80566000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02beac0, pgdir(kva)=0xffffffffc04eb000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04eb000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04eb000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804eb000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804eb000, calling lsatp
-I am child 23
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0572000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0572000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80572000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02beb80, pgdir(kva)=0xffffffffc04ee000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04ee000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04ee000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804ee000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804ee000, calling lsatp
-I am child 24
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+ am child [DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+ am child[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bec00, pgdir(kva)=0xffffffffc04f0000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04f0000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f0000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804f0000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804f0000, calling lsatp
-I am child 25
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bec80, pgdir(kva)=0xffffffffc04f2000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04f2000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f2000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804f2000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804f2000, calling lsatp
-I am child 26
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bed00, pgdir(kva)=0xffffffffc04f4000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04f4000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f4000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804f4000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804f4000, calling lsatp
-I am child 27
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc057e000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc057e000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x8057e000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bed80, pgdir(kva)=0xffffffffc04f6000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04f6000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f6000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804f6000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804f6000, calling lsatp
-I am child 28
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc058a000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc058a000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x8058a000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bee00, pgdir(kva)=0xffffffffc04f8000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04f8000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04f8000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804f8000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804f8000, calling lsatp
-I am child 29
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0596000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0596000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80596000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bee80, pgdir(kva)=0xffffffffc04fa000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04fa000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04fa000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804fa000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804fa000, calling lsatp
-I am child 30
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+ am child [DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-[DEBUG] setup_pgdir: page=0xffffffffc02bef00, pgdir(kva)=0xffffffffc04fc000
-[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04fc000
-[DEBUG] copy_mm: mm->pgdir=0xffffffffc04fc000 (before PADDR)
-[DEBUG] copy_mm: proc->pgdir=0x804fc000 (after PADDR)
-[DEBUG] proc_run: proc->pgdir=0x804fc000, calling lsatp
-I am child 31
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05a2000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05a2000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805a2000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
-forktest pass.
-[DEBUG] proc_run: proc->pgdir=0x8020a000, calling lsatp
-all user-mode processes have quit.
-init check memory pass.
-kernel panic at kern/process/proc.c:528:
-    initproc exit.
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05ae000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05ae000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805ae000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05ba000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05ba000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805ba000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05c7000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05c7000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805c7000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+0[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+ild [DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+8[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
 
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+6[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+ld [DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05d3000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05d3000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805d3000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+ld [DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05df000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05df000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805df000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05eb000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05eb000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805eb000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bd000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc04bf000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc04bf000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x804bf000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+ild [DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc05f9000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc05f9000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x805f9000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+7[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8051d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80505000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+3[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+am [DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0507000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0507000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80507000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80507000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+100 ticks
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+2[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc0521000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc0521000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x80521000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x80521000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80507000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+c[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+l[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+1[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80521000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80507000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+d [DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+am child [DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+d[DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+1[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] setup_pgdir: new pgdir=0xffffffffc060a000, boot_pgdir_va=0xffffffffc020a000
+[DEBUG] copy_mm: mm->pgdir=0xffffffffc060a000 (before PADDR)
+[DEBUG] copy_mm: proc->pgdir=0x8060a000 (after PADDR)
+[DEBUG] proc_run: proc->pgdir=0x8060a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80521000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80507000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+a[DEBUG] proc_run: proc->pgdir=0x805ae000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805a2000, calling lsatp
+h[DEBUG] proc_run: proc->pgdir=0x80596000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8058a000, calling lsatp
+i[DEBUG] proc_run: proc->pgdir=0x8057e000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80572000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x80566000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80559000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x8054d000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80541000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80535000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80529000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80511000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804ed000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804e1000, calling lsatp
+
+[DEBUG] proc_run: proc->pgdir=0x804d5000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804c9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804b1000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8060a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80521000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x80507000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805f9000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x804bf000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805eb000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x805df000, calling lsatp
+I[DEBUG] proc_run: proc->pgdir=0x805d3000, calling lsatp
+m[DEBUG] proc_run: proc->pgdir=0x805c7000, calling lsatp
+ [DEBUG] proc_run: proc->pgdir=0x805ba000, calling lsatp
+100 ticks

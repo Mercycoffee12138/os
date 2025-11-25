@@ -427,7 +427,14 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
             ret = page_insert(to, npage, start, perm);
 
-            assert(ret == 0);
+            //assert(ret == 0);
+
+            // 添加错误处理：如果 page_insert 失败，必须释放 npage
+            if (ret != 0) {
+                cprintf("copy_range: page_insert failed at 0x%x\n", start);
+                free_page(npage);
+                return ret;
+            }
         }
         start += PGSIZE;
     } while (start != 0 && start < end);
