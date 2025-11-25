@@ -31,9 +31,9 @@ DTB init completed
 
 Special kernel symbols:
   entry  0xc020004a (virtual)
-  etext  0xc0205692 (virtual)
-  edata  0xc02a62c8 (virtual)
-  end    0xc02aa774 (virtual)
+  etext  0xc02057b8 (virtual)
+  edata  0xc02a6250 (virtual)
+  end    0xc02aa6fc (virtual)
 Kernel executable memory footprint: 682KB
 memory management: default_pmm_manager
 physcial memory map:
@@ -47,13 +47,20 @@ kmalloc_init() succeeded!
 check_vma_struct() succeeded!
 check_vmm() succeeded.
 ++ setup timer interrupts
+[DEBUG] proc_run: proc->pgdir=0x8020a000, calling lsatp
+[DEBUG] proc_run: proc->pgdir=0x8020a000, calling lsatp
 kernel_execve: pid = 2, name = "badsegment".
 Breakpoint
+[DEBUG] setup_pgdir: page=0xffffffffc02bdc40, pgdir(kva)=0xffffffffc04b1000
+[DEBUG] setup_pgdir: mm->pgdir=0xffffffffc04b1000
+[DEBUG] load_icode: mm->pgdir=0xffffffffc04b1000 (before PADDR)
+[DEBUG] load_icode: current->pgdir=0x804b1000 (after PADDR)
 user panic at user/badsegment.c:10:
     FAIL: T.T
 
+[DEBUG] proc_run: proc->pgdir=0x8020a000, calling lsatp
 all user-mode processes have quit.
 init check memory pass.
-kernel panic at kern/process/proc.c:523:
+kernel panic at kern/process/proc.c:528:
     initproc exit.
 
