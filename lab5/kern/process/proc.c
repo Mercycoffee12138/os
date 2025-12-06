@@ -247,7 +247,6 @@ void proc_run(struct proc_struct *proc)
         {
             struct proc_struct *prev = current;
             current = proc;
-            cprintf("[DEBUG] proc_run: proc->pgdir=%p, calling lsatp\n", proc->pgdir);
             lsatp(proc->pgdir);
             switch_to(&(prev->context), &(proc->context));
         }
@@ -350,11 +349,6 @@ setup_pgdir(struct mm_struct *mm)
     }
     
     memcpy(pgdir, boot_pgdir_va, PGSIZE);
-    
-    // 添加验证
-    cprintf("[DEBUG] setup_pgdir: new pgdir=%p, boot_pgdir_va=%p\n", 
-            pgdir, boot_pgdir_va);
-
     mm->pgdir = pgdir;
     return 0;
 }
@@ -406,16 +400,7 @@ copy_mm(uint32_t clone_flags, struct proc_struct *proc)
 good_mm:
     mm_count_inc(mm);
     proc->mm = mm;
-    cprintf("[DEBUG] copy_mm: mm->pgdir=%p (before PADDR)\n", mm->pgdir);
     proc->pgdir = PADDR(mm->pgdir);
-    cprintf("[DEBUG] copy_mm: proc->pgdir=%p (after PADDR)\n", proc->pgdir);
-
-    // 添加验证：确保转换后的物理地址有效
-    // if (proc->pgdir == 0) {
-    //     cprintf("[ERROR] copy_mm: Invalid pgdir after PADDR\n");
-    //     ret = -E_INVAL;
-    //     goto bad_dup_cleanup_mmap;
-    // }
     return 0;
 bad_dup_cleanup_mmap:
     exit_mmap(mm);
@@ -738,9 +723,7 @@ load_icode(unsigned char *binary, size_t size)
     //(5) set current process's mm, sr3, and set satp reg = physical addr of Page Directory
     mm_count_inc(mm);
     current->mm = mm;
-    cprintf("[DEBUG] load_icode: mm->pgdir=%p (before PADDR)\n", mm->pgdir);
     current->pgdir = PADDR(mm->pgdir);
-    cprintf("[DEBUG] load_icode: current->pgdir=%p (after PADDR)\n", current->pgdir);
     lsatp(PADDR(mm->pgdir));
 
     //(6) setup trapframe for user environment

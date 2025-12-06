@@ -83,6 +83,8 @@ syscall(void) {
     struct trapframe *tf = current->tf;
     uint64_t arg[5];
     int num = tf->gpr.a0;
+    // Debug: print epc before and after syscall
+    uintptr_t epc_before = tf->epc;
     if (num >= 0 && num < NUM_SYSCALLS) {
         if (syscalls[num] != NULL) {
             arg[0] = tf->gpr.a1;
@@ -91,6 +93,11 @@ syscall(void) {
             arg[3] = tf->gpr.a4;
             arg[4] = tf->gpr.a5;
             tf->gpr.a0 = syscalls[num](arg);
+            // Debug: check if epc was corrupted
+            if (tf->epc != epc_before) {
+                cprintf("[BUG] epc changed! before=0x%lx, after=0x%lx, syscall=%d, pid=%d\n",
+                        epc_before, tf->epc, num, current->pid);
+            }
             return ;
         }
     }
