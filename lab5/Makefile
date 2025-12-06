@@ -265,6 +265,13 @@ grade:
 	$(V)$(MAKE) $(MAKEOPTS) clean
 	$(V)$(SH) tools/grade.sh
 
+cow: build-cow_test $(UCOREIMG)
+	$(V)$(QEMU) \
+		-machine virt \
+		-nographic \
+		-bios default \
+		-device loader,file=$(UCOREIMG),addr=0x80200000
+
 touch:
 	$(V)$(foreach f,$(TOUCH_FILES),$(TOUCH) $(f))
 
