@@ -16,6 +16,7 @@
 #include <sync.h>
 #include <sbi.h>
 #include <proc.h>
+#include <pmm.h>
 
 #define TICK_NUM 100
 static int num = 0; // 打印次数计数器
@@ -219,8 +220,31 @@ void exception_handler(struct trapframe *tf)
                 tf->epc, tf->tval, current ? current->pid : -1);
         break;
     case CAUSE_STORE_PAGE_FAULT:
+        // Handle Store/AMO page fault - check for COW
+        if (current != NULL && current->mm != NULL) {
+            uintptr_t addr = tf->tval;
+            struct mm_struct *mm = current->mm;
+            struct vma_struct *vma = find_vma(mm, addr);
+            
+            if (vma != NULL && (vma->vm_flags & VM_WRITE)) {
+                // This is a valid writable region, check for COW
+                pte_t *ptep = get_pte(mm->pgdir, addr, 0);
+                if (ptep != NULL && (*ptep & PTE_V) && (*ptep & PTE_COW)) {
+                    // This is a COW page, handle it
+                    int ret = do_cow_fault(mm, addr, ptep);
+                    if (ret == 0) {
+                        // COW handled successfully, return to continue execution
+                        break;
+                    }
+                    cprintf("COW fault handling failed at addr=0x%lx, ret=%d\n", addr, ret);
+                }
+            }
+        }
         cprintf("Store/AMO page fault at epc=0x%lx, tval=0x%lx, pid=%d\n",
                 tf->epc, tf->tval, current ? current->pid : -1);
+        if (current != NULL) {
+            do_exit(-E_KILLED);
+        }
         break;
     default:
         print_trapframe(tf);

@@ -218,7 +218,8 @@ int dup_mmap(struct mm_struct *to, struct mm_struct *from)
 
         insert_vma_struct(to, nvma);
 
-        bool share = 0;
+        // Enable COW (Copy-On-Write) for writable pages
+        bool share = 1;  // Enable COW mechanism
         if (copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share) != 0)
         {
             return -E_NO_MEM;
@@ -237,6 +238,7 @@ void exit_mmap(struct mm_struct *mm)
         struct vma_struct *vma = le2vma(le, list_link);
         unmap_range(pgdir, vma->vm_start, vma->vm_end);
     }
+    le = list;
     while ((le = list_next(le)) != list)
     {
         struct vma_struct *vma = le2vma(le, list_link);

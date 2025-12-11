@@ -288,144 +288,126 @@ do_fork
 
 ------
 
-## 三、Copy-on-Write 机制设计与本次实现的扩展思路
+## 三、Copy-on-Write 机制的实现
 
-在当前实现中，`copy_range` 是“深拷贝”：fork 时立即复制所有用户页，简单但成本高。如果子进程很快 `exec` 或退出，这些复制都是浪费。为优化这一点，可以引入 COW 机制，只在发生写操作时再复制：
+在当前实现中，`copy_range` 通过 `share` 参数支持两种模式：
 
-> “读共享，写时复制”。
+1. **share = 0**：传统深拷贝模式，fork 时立即复制所有用户页
+2. **share = 1**：COW 模式，fork 时共享页面，写时复制
 
-我们在本实验中额外实现了一个 `cow.c / cow.h`，对 `COW` 机制做了较完整的设计，下面按模块说明。 
+### 3.1 COW 模式的启用
 
-------
+在 `dup_mmap()` 中，通过调用 `copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share=1)` 启用 COW 机制。
 
-### 1. COW 的关键标记与数据结构
+**COW 的核心思想**：
+- Fork 阶段**不真正复制物理页**，而是让父子进程共享同一物理页
+- 只在页表层面做标记与权限调整
+- 一旦发生写操作就会触发缺页异常，此时才进行真正的复制
 
-- 在 `PTE` 中定义了一个 **COW 标记位**：
+### 3.2 COW 的关键标记与数据结构
 
-  ```c
-  #define PTE_COW (1 << 10)
-  ```
-
-- 同时定义了一些页面状态常量（主要用于逻辑区分）：
-
-  ```c
-  #define PAGE_STATE_INDEPENDENT  0
-  #define PAGE_STATE_COW_SHARED   1
-  #define PAGE_STATE_COW_PENDING  2
-  #define PAGE_STATE_COPIED       3
-  ```
-
-  虽然当前实现主要通过 `PTE `的 `COW` 位与 `Page `的引用计数来判断是否共享，但这些状态为后续更复杂的 `COW` 管理留了扩展空间。
-
-- 利用已有的 `Page` 引用计数（`page_ref_inc/dec/page_ref`）判断一帧物理页是否仍被多个进程共享。
-
-------
-
-### 2. fork 阶段的 COW 建立（dup_mmap_cow）
-
-`COW `的核心是在` fork` 阶段**不真正复制物理页**，而是让父子进程共享同一物理页，只在页表层面做一些标记与权限调整。为此我们实现了 `dup_mmap_cow`：
-
-1. 遍历父进程的所有` VMA`，仅对 **可写的用户 `VMA`** 进行 COW 处理（只读段共享不需要 `COW`）。
-2. 对 `VMA` 中的每个虚拟页：
-   - 在父进程页表中找到对应的` PTE`（`from_pte`），并获取 `Page *page`；
-   - 在子进程页表中用 `get_pte(to_mm->pgdir, va, 1)` 创建对应 PTE（`to_pte`）；
-   - 清除写权限 `~PTE_W`，添加 `PTE_COW` 标记；
-   - 父子进程的 `PTE` 都指向同一个物理页，引用计数加一。
-
-伪代码逻辑如下：
-
+**PTE 中的 COW 标记位**：
 ```c
-for each writable vma:
-    for va in [vm_start, vm_end):
-        from_pte = get_pte(from_mm->pgdir, va, 0)
-        if invalid: continue
-
-        to_pte = get_pte(to_mm->pgdir, va, 1)
-        page = pte2page(*from_pte)
-
-        // 父子共享同一物理页，但去掉写权限，加上 COW 位
-        pte_t perm = (*from_pte & ~PTE_W) | PTE_COW;
-        *to_pte = (*from_pte & 0xFFFFF000) | perm;
-
-        page_ref_inc(page);
+#define PTE_COW 0x100  // 第 8 位作为 COW 标记
 ```
 
-这样，父子进程起初都只能“读共享页”，一旦发生写操作就会触发` COW `逻辑。
+**Page 结构体中的引用计数**：
+```c
+struct Page {
+    int ref;  // 页面被引用的次数
+    // ...
+};
+```
 
-------
+**关键 API**：
+- `page_ref_inc(page)` - 增加页面引用计数
+- `page_ref_dec(page)` - 减少页面引用计数
+- `page_ref(page)` - 获取页面引用计数值
+- `set_page_ref(page, n)` - 设置页面引用计数为 n
 
-### 3. COW 缺页异常检测（is_cow_fault）
+### 3.3 Fork 阶段的 COW 建立
 
-当进程对一个 `COW `页执行写操作时，硬件会产生“存储页故障”。我们实现了 `is_cow_fault` 来在异常处理路径中判断当前是否是 `COW `场景：
+在 `copy_range()` 中，当 `share = 1` 时：
 
-- 检查 `trapframe->cause` 是否为 `CAUSE_STORE_PAGE_FAULT`；
-- 通过 `get_pte(current->mm->pgdir, va, 0)` 取出对应 PTE；
-- 要求 `PTE `有效、且设置了 `PTE_COW` 位。
+1. 遍历父进程的所有虚拟页
+2. 对每个有效的页面：
+   - 清除写权限：`perm & ~PTE_W`
+   - 添加 COW 标记：`| PTE_COW`
+   - 父子进程的 PTE 都指向同一个物理页
+   - 增加页面引用计数：`page_ref_inc(page)`
 
-只有全部满足时，才认为这是一个“合法的` COW `写异常”，交由 `handle_cow_fault` 处理。
+这样，父子进程起初都只能"读共享页"，一旦发生写操作就会触发 COW 逻辑。
 
-------
+### 3.4 COW 缺页异常检测
 
-### 4. COW 缺页处理流程（handle_cow_fault）
+当进程对一个 COW 页执行写操作时，硬件会产生"存储页故障"（CAUSE_STORE_PAGE_FAULT）。
 
-`handle_cow_fault` 是 COW 的核心函数，负责在写入时真正执行“写时复制”：
+在 `trap.c` 中的异常处理器会：
+1. 检查异常是否为 `CAUSE_STORE_PAGE_FAULT`
+2. 通过 `get_pte()` 取出对应 PTE
+3. 检查是否设置了 `PTE_COW` 位
+4. 若是 COW 页面，调用 `do_cow_fault()` 处理
 
-1. **在关中断状态下读旧页信息**
-    double-check 模式，保证并发安全：
-   - 再次获取 PTE，确认 `PTE_V` 和 `PTE_COW` 都存在；
-   - 通过 `pte2page(*pte)` 拿到原物理页 `old_page`。
-2. **分配新物理页并拷贝内容**
-   - `new_page = alloc_page()`；
-   - `memcpy(page2kva(new_page), page2kva(old_page), PGSIZE)`。
-3. **更新引用计数与页表映射**（仍在关中断状态下）
-   - `page_ref_dec(old_page)`，如引用计数为 0 则 `free_page(old_page)`；
-   - 调用 `page_insert(current->mm->pgdir, new_page, va, perm)` 建立**可读写**的新映射（不再带 `PTE_COW`，而是 `PTE_U|PTE_V|PTE_R|PTE_W|PTE_X`）。
-4. **刷新 TLB**
-   - `tlb_invalidate(current->mm->pgdir, va)`。
+### 3.5 COW 缺页处理流程
 
-处理完成后，该虚拟页在当前进程中已经变成一个“独占可写页”，而其他进程仍然共享原来的物理页，读到的是原始内容。
+`do_cow_fault()` 是 COW 的核心函数，负责在写入时真正执行"写时复制"：
 
-------
+**处理步骤**：
 
-### 5. 进程退出时的 COW 清理（cleanup_cow_pages）
+1. **获取原始页面和权限**
+   - 从 PTE 获取原物理页面
+   - 恢复权限：移除 COW 标志，添加写权限
 
-`COW `会增加物理页引用计数，因此进程退出时必须正确递减引用计数、释放物理内存。我们实现了 `cleanup_cow_pages`：
+2. **检查引用计数**
+   - 若 `page_ref(old_page) == 1`：只有当前进程使用
+     - 直接恢复写权限，无需复制
+     - 更新 PTE，刷新 TLB，返回
+   - 若 `page_ref(old_page) > 1`：多个进程共享
 
-- 遍历该进程的所有 `VMA` 和虚拟页；
-- 对每个有效 `PTE`：
-  - 若带 `PTE_COW`，执行 `page_ref_dec(page)`，如果引用计数到 0 则 `free_page(page)`；
-  - 若不是`COW` 页，则按普通独占页直接 `free_page(page)`。
+3. **分配新页面并复制**
+   - 分配新物理页面：`alloc_page()`
+   - 复制原页面内容：`memcpy(dst, src, PGSIZE)`
+
+4. **更新引用计数和页表**
+   - 原页面引用计数减 1：`page_ref_dec(old_page)`
+   - 若原页面引用计数为 0，释放该页面：`free_page(old_page)`
+   - 新页面引用计数设为 1：`set_page_ref(new_page, 1)`
+   - 更新 PTE 指向新页面，设置为可读写
+
+5. **刷新 TLB**
+   - `tlb_invalidate(mm->pgdir, addr)`
+   - 使 CPU 缓存失效，确保内存一致性
+
+处理完成后，该虚拟页在当前进程中已经变成一个"独占可写页"，而其他进程仍然共享原来的物理页。
+
+### 3.6 进程退出时的资源清理
+
+进程退出时，需要正确递减引用计数、释放物理内存。在 `exit_mmap()` 中：
+
+- 遍历该进程的所有 VMA 和虚拟页
+- 对每个有效 PTE：
+  - 若带 `PTE_COW`，执行 `page_ref_dec(page)`，如果引用计数到 0 则 `free_page(page)`
+  - 若不是 COW 页，则按普通独占页直接 `free_page(page)`
 
 这样可以保证：
-
-- 不会因为 `COW `共享而产生内存泄漏；
-- 也不会错误释放仍被其他进程使用的共享页。
-
-------
-
-### 6. COW 与当前 copy_range 实现的关系与演进
-
-当前 `copy_range` 的实现是“**完全复制所有页**”的方案，逻辑简单、正确性好，适合作为实验的第一版实现。若要真正启用 COW，可以有两种演进做法：
-
-1. **在 `copy_mm` 中增加一个“COW 模式”，调用 `dup_mmap_cow` 替换现有 `dup_mmap+copy_range` 路径**；
-2. 或者在 `copy_range` 中引入条件，当启用 `COW` 时不再 `memcpy` 分配新页，而是：
-   - 为子进程建立共享映射；
-   - 清除写权限并加上 `PTE_COW`；
-   - 增加引用计数。
-
-同时需要在缺页异常处理函数（trap handler）中调用 `is_cow_fault/handle_cow_fault`，完成写时复制。
+- 不会因为 COW 共享而产生内存泄漏
+- 也不会错误释放仍被其他进程使用的共享页
 
 ------
 
 ## 四、小结
 
-- 在本次实验中，我们先通过实现 `copy_range` 完成了 **父进程到子进程的用户地址空间深拷贝**，保证 fork 后父子进程在逻辑上互不影响。
-- 在此基础上，我们设计并实现了一个较完整的 **Copy-on-Write 支持模块**（`cow.c/cow.h`），包括：
-  - PTE 层面的 `PTE_COW` 标记；
-  - fork 阶段的 `dup_mmap_cow` 共享建页；
-  - 写缺页时的 `is_cow_fault/handle_cow_fault`；
-  - 退出阶段的 `cleanup_cow_pages`。
-- 这样一来，uCore 可以从“直接复制全部内存”的 naive 实现，逐步演进到“按需写时复制”的优化实现，大幅降低 fork 的内存与时间开销，同时保持语义兼容。
+- 在本次实验中，我们通过实现 `copy_range` 完成了 **父进程到子进程的用户地址空间复制**，支持两种模式：
+  - 传统深拷贝模式（share=0）
+  - Copy-on-Write 模式（share=1）
+
+- 在 COW 模式下，uCore 实现了：
+  - PTE 层面的 `PTE_COW` 标记
+  - Fork 阶段的页面共享与引用计数管理
+  - 写缺页时的 `do_cow_fault()` 处理
+  - 进程退出时的资源清理
+
+- 这样一来，uCore 可以大幅降低 fork 的内存与时间开销，同时保持语义兼容，提高系统性能。
 
 # 练习三：阅读分析源代码，理解进程执行 fork/exec/wait/exit 的实现，以及系统调用的实现（不需要编码）
 
@@ -782,307 +764,336 @@ pid = fork();    // 内核已经把返回值写进 a0
 
 
 
-# 扩展练习 Challenge：uCore 中的 Copy-on-Write (COW) 机制实现
+# 扩展练习 Challenge1：uCore 中的 Copy-on-Write (COW) 机制实现
 
+## 一、COW 机制概述
 
+Copy-on-Write (COW) 是一种内存优化技术，在 fork 时不立即复制父进程的内存页面，而是让父子进程共享同一物理页面。当任一进程尝试写入共享页面时，才触发缺页异常，此时才进行真正的页面复制。
 
-## 一、实现源码讲解
+**核心优势**：
+- 减少 fork 时的内存复制开销
+- 节省内存空间（多个进程可共享只读页面）
+- 提高系统性能（避免不必要的复制）
+- 对应用程序完全透明
 
-### 1.1 核心数据结构
+---
 
-首先需要在现有数据结构中添加 COW 相关字段：
+## 二、实现源码讲解
+
+### 2.1 核心数据结构
+
+uCore 中已有的 Page 结构体包含引用计数字段：
 
 ```c
-// 扩展 Page 结构体 (pmm.h)
+// kern/mm/memlayout.h
 struct Page {
-    // 原有字段...
-    int ref_count;        // 页面被引用的次数
-    uint32_t cow_flags;   // COW 状态标志
-    // 0: 独占页面
-    // 1: COW 共享页面
-    // 2: COW 待拷贝页面
-};
-
-// 扩展 mm_struct 结构体 (vmm.h)
-struct mm_struct {
-    // 原有字段...
-    int cow_enabled;      // 是否启用 COW 机制
+    int ref;                    // 页面引用计数（已有）
+    uint64_t flags;             // 页面状态标志
+    unsigned int property;      // 空闲块大小
+    list_entry_t page_link;     // 空闲链表
+    list_entry_t pra_page_link; // 页面替换算法链表
+    uintptr_t pra_vaddr;        // 虚拟地址
 };
 ```
 
-PTE 中的 COW 标记位定义（在 RISC-V 中使用未使用的位）：
+PTE 中的 COW 标记位定义（在 RISC-V 中使用软件保留位）：
 
 ```c
-#define PTE_COW  (1 << 10)  // 第 10 位作为 COW 标记
+// kern/mm/mmu.h
+#define PTE_V 0x001    // Valid - 页表项有效
+#define PTE_R 0x002    // Read - 可读
+#define PTE_W 0x004    // Write - 可写
+#define PTE_X 0x008    // Execute - 可执行
+#define PTE_U 0x010    // User - 用户态可访问
+#define PTE_COW 0x100  // Copy-On-Write - COW标志（软件保留位）
 ```
 
-### 1.2 核心函数实现
+**关键点**：
+- 使用已有的 `page->ref` 引用计数追踪页面共享情况
+- 使用 PTE 中的 COW 标志位标记 COW 页面
+- 当 PTE_COW 被设置时，该页面被标记为只读（PTE_W 被清除）
 
-#### 1.2.1 标记页面为 COW 共享
+### 2.2 Fork 时启用 COW - dup_mmap() 函数
 
 ```c
-// kern/mm/cow.c
-int mark_cow_page(struct mm_struct *mm, uintptr_t va, struct Page *page)
+int dup_mmap(struct mm_struct *to, struct mm_struct *from)
 {
-    pte_t *pte;
-    
-    // 获取对应的页表项
-    if ((pte = get_pte(mm->pgdir, va, 0)) == NULL)
-        return -E_INVAL;
-    
-    // 增加页面引用计数（表示又有一个进程共享这个页面）
-    page_ref_inc(page);
-    
-    // 设置 PTE：清除写权限，添加 COW 标记
-    pte_t perm = (*pte & ~PTE_W) | PTE_COW;
-    *pte = (*pte & 0xFFFFF000) | perm;  // 保留物理地址，更新权限位
-    
+    assert(to != NULL && from != NULL);
+    list_entry_t *list = &(from->mmap_list), *le = list;
+    while ((le = list_prev(le)) != list)
+    {
+        struct vma_struct *vma, *nvma;
+        vma = le2vma(le, list_link);
+        nvma = vma_create(vma->vm_start, vma->vm_end, vma->vm_flags);
+        if (nvma == NULL)
+        {
+            return -E_NO_MEM;
+        }
+
+        insert_vma_struct(to, nvma);
+
+        // Enable COW (Copy-On-Write) for writable pages
+        bool share = 1;  // Enable COW mechanism
+        if (copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share) != 0)
+        {
+            return -E_NO_MEM;
+        }
+    }
     return 0;
 }
 ```
 
 **关键点**：
+- 调用 `copy_range()` 时传入 `share = 1` 启用 COW 机制
+- 复制所有 VMA 结构，但页面共享而非复制
 
-- 使用 `page_ref_inc(page)` 而不是直接访问 `page->ref_count`
-- 这样做是因为 uCore 的页面引用计数管理有特殊的同步机制
-
-#### 1.2.2 COW 故障检测
-
-```c
-// kern/mm/cow.c
-int is_cow_fault(struct trapframe *tf, uintptr_t va)
-{
-    pte_t *pte;
-    
-    // 检查异常原因：存储页故障 (CAUSE_STORE_PAGE_FAULT)
-    if (tf->cause != CAUSE_STORE_PAGE_FAULT)
-        return 0;
-    
-    // 获取页表项
-    pte = get_pte(current->mm->pgdir, va, 0);
-    if (pte == NULL)
-        return 0;
-    
-    // 页表项必须有效
-    if (!(*pte & PTE_V))
-        return 0;
-    
-    // 检查是否标记为 COW 标记位
-    if (!(*pte & PTE_COW))
-        return 0;
-    
-    // 这是一个 COW 故障
-    return 1;
-}
-```
-
-#### 1.2.3 COW 故障处理（核心逻辑）
+### 2.3 页面共享与标记 - copy_range() 函数
 
 ```c
-// kern/mm/cow.c
-int handle_cow_fault(uintptr_t va)
+int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
+               bool share)
 {
-    struct Page *old_page, *new_page;
-    pte_t *pte;
-    void *src_kva, *dst_kva;
-    bool intr_flag;
-    
-    // ============ 第一步：在关中断状态下获取原页面信息 ============
-    local_intr_save(intr_flag);
+    assert(start % PGSIZE == 0 && end % PGSIZE == 0);
+    assert(USER_ACCESS(start, end));
+    // copy content by page unit.
+    do
     {
-        // 再次检查这是否真的是 COW 故障（Double-check pattern）
-        pte = get_pte(current->mm->pgdir, va, 0);
-        if (pte == NULL || !(*pte & PTE_V) || !(*pte & PTE_COW)) {
-            local_intr_restore(intr_flag);
-            return -E_INVAL;
-        }
-        
-        // 获取原页面
-        old_page = pte2page(*pte);
-        if (old_page == NULL) {
-            local_intr_restore(intr_flag);
-            return -E_INVAL;
-        }
-    }
-    local_intr_restore(intr_flag);
-    
-    // ============ 第二步：分配新物理页面 ============
-    // 注：此步在开中断状态下进行，可能分配失败
-    if ((new_page = alloc_page()) == NULL)
-        return -E_NO_MEM;
-    
-    // ============ 第三步：拷贝数据（防 Dirty COW 的关键） ============
-    src_kva = page2kva(old_page);
-    dst_kva = page2kva(new_page);
-    memcpy(dst_kva, src_kva, PGSIZE);
-    
-    // ============ 第四步：在关中断状态下更新核心数据结构 ============
-    local_intr_save(intr_flag);
-    {
-        // 减少原页面的引用计数
-        page_ref_dec(old_page);
-        
-        // 如果没有其他进程使用该页面，释放它
-        if (page_ref(old_page) == 0) {
-            free_page(old_page);
-        }
-        
-        // 建立新映射：指向新页面，标记为可读写
-        pte_t perm = PTE_U | PTE_V | PTE_R | PTE_W | PTE_X;
-        page_insert(current->mm->pgdir, new_page, va, perm);
-        
-        // 标记新页面的引用计数为 1（独占页面）
-        set_page_ref(new_page, 1);
-    }
-    local_intr_restore(intr_flag);
-    
-    // ============ 第五步：刷新 TLB ============
-    tlb_invalidate(current->mm->pgdir, va);
-    
-    return 0;
-}
-```
-
-**核心 API 说明**：
-
-- `page_ref_inc(page)` - 增加页面引用计数
-- `page_ref_dec(page)` - 减少页面引用计数  
-- `page_ref(page)` - 获取页面引用计数值
-- `set_page_ref(page, n)` - 设置页面引用计数为 n
-- `page_insert(pgdir, page, va, perm)` - 在页表中插入页面映射
-- `tlb_invalidate(pgdir, va)` - 刷新 TLB 条目
-
-#### 1.2.4 COW 模式的页表复制
-
-```c
-// kern/mm/cow.c
-int dup_mmap_cow(struct mm_struct *to_mm, struct mm_struct *from_mm)
-{
-    struct vma_struct *vma;
-    list_entry_t *list = &from_mm->mmap_list, *le = list;
-    uintptr_t va;
-    pte_t *from_pte, *to_pte;
-    struct Page *page;
-    
-    while ((le = list_next(le)) != list) {
-        vma = le2vma(le, list_link);
-        
-        // 仅对用户空间、可写的 VMA 进行 COW
-        // 只读段（如代码段）可以直接共享，无需 COW 标记
-        if (!(vma->vm_flags & VM_WRITE))
+        // call get_pte to find process A's pte according to the addr start
+        pte_t *ptep = get_pte(from, start, 0), *nptep;
+        if (ptep == NULL)
+        {
+            start = ROUNDDOWN(start + PTSIZE, PTSIZE);
             continue;
-        
-        // 遍历 VMA 内的所有虚拟页面
-        for (va = vma->vm_start; va < vma->vm_end; va += PGSIZE) {
-            // 获取源进程的页表项
-            from_pte = get_pte(from_mm->pgdir, va, 0);
-            if (from_pte == NULL || !(*from_pte & PTE_V))
-                continue;
-            
-            // 获取目标进程的页表项（如果不存在则创建）
-            if ((to_pte = get_pte(to_mm->pgdir, va, 1)) == NULL)
-                return -E_NO_MEM;
-            
-            // 获取原页面指针
-            page = pte2page(*from_pte);
-            
-            // 在目标进程的页表中建立映射
-            // 清除写权限，添加 COW 标记
-            pte_t perm = (*from_pte & ~PTE_W) | PTE_COW;
-            *to_pte = (*from_pte & 0xFFFFF000) | perm;
-            
-            // 增加页面引用计数（表示新增一个共享者）
-            page_ref_inc(page);
         }
-    }
-    
+        // call get_pte to find process B's pte according to the addr start. If
+        // pte is NULL, just alloc a PT
+        if (*ptep & PTE_V)
+        {
+            if ((nptep = get_pte(to, start, 1)) == NULL)
+            {
+                return -E_NO_MEM;
+            }
+            uint32_t perm = (*ptep & PTE_USER);
+            // get page from ptep
+            struct Page *page = pte2page(*ptep);
+            assert(page != NULL);
+
+            if (share) {
+                // COW mechanism: share the physical page instead of copying
+                // 1. Set both parent and child page as read-only with COW flag
+                // 2. Increase reference count of the shared page
+
+                // Remove write permission and add COW flag
+                uint32_t cow_perm = (perm & ~PTE_W) | PTE_COW;
+
+                // Update parent's PTE to be read-only with COW flag
+                *ptep = pte_create(page2ppn(page), cow_perm);
+                tlb_invalidate(from, start);
+
+                // Set child's PTE to same read-only page with COW flag
+                *nptep = pte_create(page2ppn(page), cow_perm);
+
+                // Increase reference count
+                page_ref_inc(page);
+            } else {
+                // Original behavior: allocate new page and copy content
+                struct Page *npage = alloc_page();
+                assert(npage != NULL);
+                int ret = 0;
+
+                void *src_kvaddr = page2kva(page);
+                void *dst_kvaddr = page2kva(npage);
+                memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+                ret = page_insert(to, npage, start, perm);
+
+                if (ret != 0) {
+                    cprintf("copy_range: page_insert failed at 0x%x\n", start);
+                    free_page(npage);
+                    return ret;
+                }
+            }
+        }
+        start += PGSIZE;
+    } while (start != 0 && start < end);
     return 0;
 }
 ```
 
-#### 1.2.5 进程退出时的资源清理
+**COW 处理逻辑**（当 `share = 1` 时）：
+1. 移除写权限：`perm & ~PTE_W`
+2. 添加 COW 标志：`| PTE_COW`
+3. 父进程 PTE 更新为只读 + COW
+4. 子进程 PTE 指向同一物理页，也是只读 + COW
+5. 增加页面引用计数：`page_ref_inc(page)`
+
+### 2.4 写入异常处理 - trap.c
 
 ```c
-// kern/mm/cow.c
-void cleanup_cow_pages(struct mm_struct *mm)
-{
-    if (mm == NULL)
-        return;
-    
-    struct vma_struct *vma;
-    list_entry_t *list = &mm->mmap_list, *le = list;
-    uintptr_t va;
-    pte_t *pte;
-    struct Page *page;
-    
-    // 遍历所有虚拟地址空间
-    while ((le = list_next(le)) != list) {
-        vma = le2vma(le, list_link);
-        
-        for (va = vma->vm_start; va < vma->vm_end; va += PGSIZE) {
-            pte = get_pte(mm->pgdir, va, 0);
-            if (pte == NULL || !(*pte & PTE_V))
-                continue;
-            
-            page = pte2page(*pte);
-            
-            // 如果是 COW 页面，减少引用计数
-            if (*pte & PTE_COW) {
-                page_ref_dec(page);
-                if (page_ref(page) == 0) {
-                    free_page(page);
+case CAUSE_STORE_PAGE_FAULT:
+    // Handle Store/AMO page fault - check for COW
+    if (current != NULL && current->mm != NULL) {
+        uintptr_t addr = tf->tval;
+        struct mm_struct *mm = current->mm;
+        struct vma_struct *vma = find_vma(mm, addr);
+
+        if (vma != NULL && (vma->vm_flags & VM_WRITE)) {
+            // This is a valid writable region, check for COW
+            pte_t *ptep = get_pte(mm->pgdir, addr, 0);
+            if (ptep != NULL && (*ptep & PTE_V) && (*ptep & PTE_COW)) {
+                // This is a COW page, handle it
+                int ret = do_cow_fault(mm, addr, ptep);
+                if (ret == 0) {
+                    // COW handled successfully, return to continue execution
+                    break;
                 }
-            } else {
-                // 独占页面直接释放
-                free_page(page);
+                cprintf("COW fault handling failed at addr=0x%lx, ret=%d\n", addr, ret);
             }
         }
     }
+    cprintf("Store/AMO page fault at epc=0x%lx, tval=0x%lx, pid=%d\n",
+            tf->epc, tf->tval, current ? current->pid : -1);
+    if (current != NULL) {
+        do_exit(-E_KILLED);
+    }
+    break;
+```
+
+**异常处理流程**：
+1. 检查异常是否为 `CAUSE_STORE_PAGE_FAULT`（写入缺页）
+2. 获取故障地址 `addr = tf->tval`
+3. 查找该地址所在的 VMA，确认是可写区域
+4. 获取对应的 PTE，检查是否有 `PTE_COW` 标志
+5. 若是 COW 页面，调用 `do_cow_fault()` 处理
+6. 处理成功则返回继续执行，失败则杀死进程
+
+### 2.5 COW 缺页处理 - do_cow_fault() 函数
+
+```c
+int do_cow_fault(struct mm_struct *mm, uintptr_t addr, pte_t *ptep)
+{
+    // Get the original page
+    struct Page *old_page = pte2page(*ptep);
+
+    // Get original permissions (without COW flag, with write permission restored)
+    uint32_t perm = (*ptep & PTE_USER);
+    perm = (perm & ~PTE_COW) | PTE_W;  // Remove COW flag, add write permission
+
+    // Check if this page is only referenced by current process
+    if (page_ref(old_page) == 1) {
+        // Only one reference, just update permissions directly
+        *ptep = pte_create(page2ppn(old_page), perm);
+        tlb_invalidate(mm->pgdir, addr);
+        return 0;
+    }
+
+    // Multiple references, need to copy the page
+    struct Page *new_page = alloc_page();
+    if (new_page == NULL) {
+        return -E_NO_MEM;
+    }
+
+    // Copy content from old page to new page
+    void *src = page2kva(old_page);
+    void *dst = page2kva(new_page);
+    memcpy(dst, src, PGSIZE);
+
+    // Update PTE to point to new page with write permission
+    // First decrease ref of old page
+    page_ref_dec(old_page);
+    if (page_ref(old_page) == 0) {
+        free_page(old_page);
+    }
+
+    // Set new page's ref and update PTE
+    set_page_ref(new_page, 1);
+    *ptep = pte_create(page2ppn(new_page), perm);
+    tlb_invalidate(mm->pgdir, addr);
+
+    return 0;
 }
 ```
 
+**COW 故障处理逻辑**：
+
+1. **获取原始页面和权限**
+   - 从 PTE 获取原物理页面
+   - 恢复权限：移除 COW 标志，添加写权限
+
+2. **检查引用计数**
+   - 若 `page_ref(old_page) == 1`：只有当前进程使用
+     - 直接恢复写权限，无需复制
+     - 更新 PTE，刷新 TLB，返回
+   - 若 `page_ref(old_page) > 1`：多个进程共享
+
+3. **分配新页面并复制**
+   - 分配新物理页面
+   - 复制原页面内容到新页面
+
+4. **更新引用计数和页表**
+   - 原页面引用计数减 1
+   - 若原页面引用计数为 0，释放该页面
+   - 新页面引用计数设为 1
+   - 更新 PTE 指向新页面，设置为可读写
+
+5. **刷新 TLB**
+   - 使 CPU 缓存失效，确保内存一致性
+
 ---
 
-## 二、COW 状态转换（有限状态自动机）
+## 三、COW 执行流程
 
-### 2.1 页面状态转换图
+COW 的执行流程分为两个阶段：Fork 阶段和写入阶段。在 Fork 阶段，`do_fork()` 调用 `copy_mm()` 复制内存管理结构，其中 `dup_mmap()` 调用 `copy_range(share=1)` 启用 COW 机制。此时父子进程共享物理页面，但都被标记为只读（PTE_W 被清除，PTE_COW 被设置），引用计数增加。在写入阶段，当子进程尝试写入共享页面时，CPU 触发 `CAUSE_STORE_PAGE_FAULT` 异常。异常处理器检查 PTE_COW 标志，确认这是 COW 页面后调用 `do_cow_fault()` 处理。`do_cow_fault()` 根据引用计数决定是否复制：若引用计数为 1，直接恢复写权限；若大于 1，分配新页面、复制内容、更新 PTE。最后刷新 TLB 并返回用户空间重试写操作。
 
+### 3.2 页面状态转换（有限状态自动机）
+
+#### 3.2.1 状态转换图
+
+```mermaid
+graph TD
+    Start["开始"]
+
+    INDEPENDENT["INDEPENDENT<br/>ref=1, W=1, COW=0<br/>页面独占于一个进程"]
+
+    COW_SHARED["COW_SHARED<br/>ref≥2, W=0, COW=1<br/>多个进程共享，只读"]
+
+    COW_PENDING["COW_PENDING<br/>ref≥1, W=0, COW=1<br/>写访问触发，正在处理"]
+
+    COPIED["COPIED<br/>ref=1, W=1, COW=0<br/>页面已拷贝，成为独占"]
+
+    FREE["FREE<br/>ref=0<br/>页面已释放回物理内存池"]
+
+    End["结束"]
+
+    Start -->|alloc_page| INDEPENDENT
+
+    INDEPENDENT -->|fork with COW| COW_SHARED
+
+    COW_SHARED -->|write access| COW_PENDING
+
+    COW_PENDING -->|ref > 1| COPIED
+
+    COW_PENDING -->|ref == 1| INDEPENDENT
+
+    COPIED -->|do_exit| FREE
+
+    COW_SHARED -->|do_exit| FREE
+
+    INDEPENDENT -->|do_exit| FREE
+
+    FREE --> End
+
+    style INDEPENDENT fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    style COW_SHARED fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style COW_PENDING fill:#ffe0b2,stroke:#e65100,stroke-width:2px
+    style COPIED fill:#c8e6c9,stroke:#1b5e20,stroke-width:2px
+    style FREE fill:#ffccbc,stroke:#bf360c,stroke-width:2px
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                  页面状态转换自动机                           │
-└─────────────────────────────────────────────────────────────┘
 
-              new page / alloc_page()
-                        │
-                        v
-                [INDEPENDENT]  ◄────── 新分配的页面
-                        │
-                        │ fork() with COW enabled
-                        │ mark_cow_page()
-                        v
-                [COW_SHARED]  ◄────── 多个进程共享
-                        │
-                        │ write access + page fault
-                        │ is_cow_fault() = true
-                        v
-                [COW_PENDING]  ◄────── 触发 COW 故障
-                        │
-                        │ handle_cow_fault():
-                        │ 1. alloc new page
-                        │ 2. memcpy(old, new)
-                        │ 3. ref_count--
-                        │ 4. update PTE
-                        v
-                  [COPIED]  ◄────── 页面已拷贝，成为独占
-                        │
-                        │ do_exit() / unmap_vma()
-                        │ ref_count-- → 0
-                        │
-                        v
-                  [FREE]  ◄────── 页面被释放回物理内存池
-```
+#### 3.2.2 各状态说明
 
-### 2.2 状态转换序列图（基于 mermaid 语法）
+页面在 COW 机制中经历五个状态：INDEPENDENT（独占）、COW_SHARED（共享）、COW_PENDING（处理中）、COPIED（已拷贝）和 FREE（已释放）。INDEPENDENT 状态表示页面只被一个进程使用，可读写。COW_SHARED 状态表示多个进程共享该页面，都被标记为只读。COW_PENDING 状态是写访问触发异常后的处理阶段。COPIED 状态表示页面已被拷贝给当前进程，成为独占页面。FREE 状态表示页面已释放回物理内存池。
+
+#### 3.2.4 进程交互序列图
 
 ```mermaid
 sequenceDiagram
@@ -1094,16 +1105,14 @@ sequenceDiagram
     Note over Parent,Child: === Fork 阶段 ===
     Parent->>Kernel: fork() with COW enabled
     Kernel->>Kernel: alloc_proc() 创建子进程PCB
-    
-    Note over Kernel: 状态: INDEPENDENT → COW_SHARED
-    Kernel->>Page: ref_count++ (父进程计数)
-    Note over Kernel,Page: 父进程页面引用数从 1 增加到 2
-    
-    Kernel->>Kernel: dup_mmap_cow()
-    Note over Kernel: 复制页表，清除W位，设置COW标记
-    Kernel->>Page: ref_count++ (子进程计数)
-    Note over Kernel,Page: 现在 ref_count = 2
-    
+
+    Note over Kernel,Page: 状态: INDEPENDENT → COW_SHARED
+    Kernel->>Page: page_ref_inc() (ref: 1→2)
+
+    Kernel->>Kernel: copy_range(share=1)
+    Note over Kernel: 父进程 PTE: 只读 + COW
+    Note over Kernel: 子进程 PTE: 只读 + COW
+
     Kernel->>Child: 返回子进程PID
     Parent->>Child: 并发执行
 
@@ -1111,24 +1120,24 @@ sequenceDiagram
     Child->>Child: 尝试写入共享页面
     Note over Child: page fault: STORE_PAGE_FAULT
     Child->>Kernel: page fault handler
-    
+
     Kernel->>Kernel: is_cow_fault() ?
-    Note over Kernel: 检查: <br/>1. 页面存在 ✓<br/>2. 页面只读 ✓<br/>3. PTE有COW标记 ✓
-    
-    Note over Kernel: 状态: COW_SHARED → COW_PENDING
+    Note over Kernel: 检查: PTE_V ✓, PTE_COW ✓
+
+    Note over Kernel,Page: 状态: COW_SHARED → COW_PENDING
     Kernel->>Page: alloc_page() 分配新页面
     Note over Kernel,Page: 新物理页面分配成功
-    
+
     Kernel->>Page: memcpy(old_page, new_page, PGSIZE)
     Note over Kernel,Page: 拷贝原页数据
-    
-    Note over Kernel: 状态: COW_PENDING → COPIED
-    Kernel->>Page: ref_count-- (from 2 to 1)
+
+    Note over Kernel,Page: 状态: COW_PENDING → COPIED
+    Kernel->>Page: page_ref_dec(old_page) (ref: 2→1)
     Note over Kernel,Page: 原页面: 仍有父进程使用
-    
-    Kernel->>Kernel: set_pte(va, new_page, RW)
+
+    Kernel->>Kernel: update PTE(child, new_page, RW)
     Note over Kernel: 子进程页表指向新页面，设置RW权限
-    
+
     Kernel->>Kernel: tlb_invalidate()
     Note over Kernel: 刷新 TLB
     Kernel->>Child: 返回用户空间重试
@@ -1138,505 +1147,133 @@ sequenceDiagram
     Child->>Child: 读写新页面 (不影响父进程)
 
     Note over Parent,Child: === 进程退出阶段 ===
-    Parent->>Kernel: do_exit()
-    Kernel->>Page: ref_count-- (from 2 to 1 or 1 to 0)
-    alt ref_count > 0
-        Note over Kernel,Page: 还有其他进程使用，保留页面
-    else ref_count == 0
-        Note over Kernel: 状态: COW_SHARED/COPIED → FREE
-        Kernel->>Page: free_page()
-        Note over Kernel,Page: 页面释放回空闲池
-    end
-
     Child->>Kernel: do_exit()
-    Kernel->>Page: ref_count-- (新页面独占, ref_count=1→0)
-    Note over Kernel: 状态: COPIED → FREE
-    Kernel->>Page: free_page()
+    Kernel->>Page: page_ref_dec(new_page) (ref: 1→0)
+    Note over Kernel,Page: 状态: COPIED → FREE
+    Kernel->>Page: free_page(new_page)
+    Note over Kernel,Page: 子进程的新页面被释放
+
+    Parent->>Kernel: do_exit()
+    Kernel->>Page: page_ref_dec(old_page) (ref: 1→0)
+    Note over Kernel,Page: 状态: INDEPENDENT → FREE
+    Kernel->>Page: free_page(old_page)
+    Note over Kernel,Page: 原页面被释放
 ```
 
-### 2.3 各个状态的详细说明
 
-| 状态            | 值   | 含义                 | ref_count | PTE_W | PTE_COW | 进程能否写入 |
-| --------------- | ---- | -------------------- | --------- | ----- | ------- | ------------ |
-| **INDEPENDENT** | 0    | 页面独占于一个进程   | ≥1        | 1     | 0       | ✓ 可以       |
-| **COW_SHARED**  | 1    | 多个进程共享，只读   | ≥2        | 0     | 1       | ✗ 否（故障） |
-| **COW_PENDING** | 2    | 写访问触发，正在处理 | ≥1        | 0     | 1       | ✗ 暂不能     |
-| **COPIED**      | 3    | 页面已拷贝给进程     | 1         | 1     | 0       | ✓ 可以       |
+#### 3.2.6 多进程 COW 场景流程图
 
----
+**场景：父进程 fork 出两个子进程，都修改数据**
 
-## 三、编译和集成指南
+```mermaid
+graph TD
+    A["初始状态<br/>父进程页面: INDEPENDENT<br/>ref=1, W=1, COW=0"]
 
-### 3.1 核心源文件说明
+    B["Fork 子进程 1<br/>页面状态: COW_SHARED<br/>ref=2, W=0, COW=1<br/>父进程 PTE: 只读+COW<br/>子进程1 PTE: 只读+COW"]
 
-已创建的 COW 实现源文件：
+    C["Fork 子进程 2<br/>页面状态: COW_SHARED<br/>ref=3, W=0, COW=1<br/>父进程 PTE: 只读+COW<br/>子进程1 PTE: 只读+COW<br/>子进程2 PTE: 只读+COW"]
 
-**`kern/mm/cow.h`** - COW 机制头文件
+    D["子进程 1 写入<br/>触发 CAUSE_STORE_PAGE_FAULT<br/>do_cow_fault() 执行<br/>分配新页面 A<br/>memcpy 复制内容<br/>page_ref_dec: ref=3→2"]
 
-```c
-#ifndef __KERN_MM_COW_H__
-#define __KERN_MM_COW_H__
+    E["子进程 1 状态: COPIED<br/>ref=1, W=1, COW=0<br/>指向新页面 A<br/><br/>原页面状态: COW_SHARED<br/>ref=2, W=0, COW=1<br/>父进程和子进程2仍共享"]
 
-#include <defs.h>
-#include <memlayout.h>
+    F["子进程 2 写入<br/>触发 CAUSE_STORE_PAGE_FAULT<br/>do_cow_fault() 执行<br/>分配新页面 B<br/>memcpy 复制内容<br/>page_ref_dec: ref=2→1"]
 
-#define PTE_COW  (1 << 10)  // 第 10 位作为 COW 标记
+    G["最终状态<br/>父进程: INDEPENDENT<br/>ref=1, 原页面<br/><br/>子进程1: COPIED<br/>ref=1, 新页面A<br/><br/>子进程2: COPIED<br/>ref=1, 新页面B<br/><br/>三个进程数据完全隔离"]
 
-// COW 核心函数声明
-int mark_cow_page(struct mm_struct *mm, uintptr_t va, struct Page *page);
-int is_cow_fault(struct trapframe *tf, uintptr_t va);
-int handle_cow_fault(uintptr_t va);
-int dup_mmap_cow(struct mm_struct *to_mm, struct mm_struct *from_mm);
-void cleanup_cow_pages(struct mm_struct *mm);
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
 
-#endif /* __KERN_MM_COW_H__ */
+    style A fill:#e1f5ff
+    style B fill:#fff3e0
+    style C fill:#fff3e0
+    style D fill:#ffe0b2
+    style E fill:#c8e6c9
+    style F fill:#ffe0b2
+    style G fill:#c8e6c9
 ```
 
-**`kern/mm/cow.c`** - COW 机制核心实现
+### 3.3 数据结构之间的关系
 
-- `mark_cow_page()`: 标记页面为 COW 共享状态
-- `is_cow_fault()`: 检测 COW 页面故障
-- `handle_cow_fault()`: 处理 COW 页面故障，分配新页面
-- `dup_mmap_cow()`: 在 fork 时进行 COW 页表复制
-- `cleanup_cow_pages()`: 进程退出时清理页面引用计数
-
-### 3.2 编译步骤
-
-1. **确保 COW 源文件已存在**：
-
-   ```bash
-   $ ls -la kern/mm/cow.*
-   kern/mm/cow.c
-   kern/mm/cow.h
-   ```
-
-2. **执行编译**：
-
-   ```bash
-   $ make cow
-   ```
-
-   编译系统会自动：
-
-   - 编译 `kern/mm/cow.c` 到内核
-   - 编译 `user/cow_test.c` 用户程序
-   - 链接生成内核二进制 `bin/kernel`
-   - 启动 QEMU 虚拟机
-
-3. **编译成功标志**：
-
-   ```
-   + ld bin/kernel          # 内核链接成功
-   OpenSBI v0.4 (...)      # QEMU 启动
-   ```
-
-### 3.3 编译可能遇到的问题和解决方案
-
-| 问题                                    | 原因            | 解决方案                                               |
-| --------------------------------------- | --------------- | ------------------------------------------------------ |
-| `cow.c: No such file`                   | 文件未创建      | 确保 `kern/mm/cow.c` 和 `cow.h` 存在                   |
-| `undefined reference to 'page_insert'`  | 内核 API 不可用 | 使用 `#include <mm/pmm.h>` 获取 page_insert 声明       |
-| `undefined reference to 'is_cow_fault'` | 函数未被链接    | 确保 `cow.c` 被编译到内核（在 Makefile 的 KSRCDIR 中） |
-| `Clock skew detected`                   | 文件时间戳问题  | 运行 `make touch` 或 `make clean` 后重新编译           |
-
-### 3.4 COW 核心 API 使用示例
-
-在内核代码中使用 COW 函数时，包含头文件：
-
-```c
-#include <mm/cow.h>
-
-// 在异常处理中
-void trap_handler(struct trapframe *tf) {
-    if (is_cow_fault(tf, tf->tval)) {
-        handle_cow_fault(tf->tval);
-        return;
-    }
-}
-
-// 在 fork 中
-int do_fork() {
-    // ... 创建进程 ...
-    if (dup_mmap_cow(new_mm, current->mm) != 0) {
-        // 处理错误
-    }
-    // ...
-}
-
-// 在进程退出时
-void do_exit() {
-    cleanup_cow_pages(current->mm);
-    // ... 其他清理工作 ...
-}
+```
+进程 (proc_struct)
+  ├─ mm (mm_struct) - 内存管理
+  │   ├─ pgdir - 页目录表
+  │   ├─ mmap_list - VMA 链表
+  │   └─ mm_count - 引用计数
+  │
+  └─ 虚拟内存区域 (vma_struct)
+      ├─ vm_start, vm_end - 地址范围
+      ├─ vm_flags - 权限标志
+      └─ 对应的物理页面 (Page)
+          ├─ ref - 引用计数
+          ├─ flags - 页面状态
+          └─ 页表项 (PTE)
+              ├─ PTE_V - 有效位
+              ├─ PTE_W - 写权限
+              ├─ PTE_COW - COW 标志
+              └─ PPN - 物理页号
 ```
 
 ---
 
-## 四、运行和测试 COW 机制
+## 四、COW 测试
 
-### 4.1 快速开始
-
-最简单的运行方法：
+COW 机制的编译和测试使用以下三个命令：
 
 ```bash
-# 在 lab5 目录下执行
-$ make cow
+$ make clean
+$ make build-cowtest
+$ make qemu
 ```
 
-这个命令会：
+---
 
-1. ✅ 编译 `kern/mm/cow.c` 和 `kern/mm/cow.h`
-2. ✅ 编译 `user/cow_test.c` 用户程序
-3. ✅ 链接生成内核二进制
-4. ✅ 启动 QEMU 虚拟机
+### 4.1 测试用例
 
-### 4.2 Makefile 中的 cow 目标
-
-在 `Makefile` 中，`cow` 目标的定义如下：
-
-```makefile
-# 第 268 行左右
-cow: build-cow_test $(UCOREIMG)
-	$(V)$(QEMU) \
-		-machine virt \
-		-nographic \
-		-bios default \
-		-device loader,file=$(UCOREIMG),addr=0x80200000
-```
-
-这个目标做的事情：
-
-- **`build-cow_test`**: 由 Makefile 的 `add_files_cc` 自动生成，编译 `user/cow_test.c`
-- **`$(UCOREIMG)`**: 生成内核镜像（自动包含编译的 `cow.c`）
-- **`$(QEMU) ... -device loader`**: 用指定的参数启动 QEMU
-
-### 4.3 完整的执行过程
-
-```bash
-$ cd lab5
-$ make cow
-
-# 输出示例：
-+ cc kern/process/proc.c
-+ ld bin/kernel
-OpenSBI v0.4 (Jul  2 2019 11:53:53)
-   ____                    _____ ____ _____
-  / __ \                  / ____|  _ \_   _|
- | |  | |_ __   ___ _ __ | (___ | |_) || |
- | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
- | |__| | |_) |  __/ | | |____) | |_) || |_
-  \____/| .__/ \___|_| |_|_____/|____/_____|
-        | |
-        |_|
-
-Platform Name          : QEMU Virt Machine
-...
-(THU.CST) os is loading ...
-kernel_execve: pid = 2, name = "cow_test".
-```
-
-QEMU 启动成功后，你会看到内核初始化消息。`cow_test` 程序会自动在 init 进程中执行。
-
-### 4.4 测试程序结构 (user/cow_test.c)
-
-实现的测试程序包含 3 个测试用例：
+COW 实现包含以下测试场景：
 
 #### 测试 1: 基本 COW 隔离
-
-```c
-[TEST 1] Basic COW - Parent and Child
 - 父进程创建子进程
-- 子进程修改 data[0] = 999
-- 验证父进程的 data[0] 仍然是 0（COW 隔离成功）
-```
+- 子进程修改共享页面
+- 验证父进程的数据不受影响
 
 #### 测试 2: 多子进程隔离
-
-```c
-[TEST 2] Multiple Children COW
-- 父进程创建 3 个子进程（PID 4, 5, 6）
-- 每个子进程修改不同的数据
-- 验证父进程的数据不受影响
-```
+- 父进程创建多个子进程
+- 每个子进程独立修改数据
+- 验证各进程数据隔离
 
 #### 测试 3: 嵌套 fork 隔离
-
-```c
-[TEST 3] Nested Fork COW
-- 父进程 fork 出 L1-CHILD
-- L1-CHILD 再 fork 出 L2-CHILD（孙进程）
+- 父进程 fork 出子进程
+- 子进程再 fork 出孙进程
 - 验证多层级 fork 的内存隔离
-```
 
-### 4.5 测试预期输出
+### 4.2 测试输出
 
-成功运行 `make cow` 后，你应该看到以下输出：
+![001](001.jpg)
 
-```
-==== COW (Copy-on-Write) Test ====
+![002](002.jpg)
 
-[TEST 1] Basic COW - Parent and Child
-[PARENT] Waiting for child...
-[CHILD] Checking initial value: data[0]=0 (expected 0)
-[CHILD] Writing data[0]=999...
-[CHILD] After write: data[0]=999
-[CHILD] Exit OK
-[PARENT] After child exit: data[0]=0 (expected 0)
-[PARENT] COW Protection OK
-
-[TEST 2] Multiple Children COW
-[PARENT] Waiting for child 4
-[CHILD 6] Modifying data[2]
-[CHILD 6] data[2]=1002
-[CHILD 5] Modifying data[1]
-[CHILD 5] data[1]=1001
-[CHILD 4] Modifying data[0]
-[CHILD 4] data[0]=1000
-[PARENT] Waiting for child 5
-[PARENT] Waiting for child 6
-[PARENT] data[0]=100 (expected 100)
-[PARENT] data[1]=101 (expected 101)
-[PARENT] data[2]=102 (expected 102)
-[PARENT] All children isolated OK
-
-[TEST 3] Nested Fork COW
-[L1-CHILD] Modifying data[0]=150
-[L2-CHILD] Modifying data[1]=250
-[L2-CHILD] Exit OK
-[L1-CHILD] After L2-CHILD: data[0]=150, data[1]=51
-[L1-CHILD] Exit OK
-[PARENT] After nested fork: data[0]=50, data[1]=51
-[PARENT] Nested fork OK
-
-==== ALL COW TESTS PASSED ====
-all user-mode processes have quit.
-init check memory pass.
-kernel panic at kern/process/proc.c:530:
-    initproc exit.
-```
-
-**关键输出**：
-
-- ✅ `==== ALL COW TESTS PASSED ====` - 所有 COW 功能验证成功
-- ✅ 父进程的数据在子进程修改后保持不变 - COW 隔离生效
-- ✅ 最后的 `kernel panic` 是正常的 - init 进程正常退出
-
-### 4.6 停止 QEMU
-
-在 QEMU 窗口中按 `Ctrl + A`，然后按 `X` 可以退出 QEMU：
-
-```bash
-# 在 QEMU 内
-(在任何时候按 Ctrl + A)
-(qemu) x
-```
-
-### 4.7 重新编译
-
-如果修改了 COW 代码，重新编译：
-
-```bash
-$ make clean        # 清除所有编译产物
-$ make cow          # 重新编译并运行
-
-# 或者只编译不运行
-$ make              # 生成 bin/kernel 和 bin/ucore.img
-```
-
-### 4.8 常见问题
-
-| 问题                                                | 解决方案                                                     |
-| --------------------------------------------------- | ------------------------------------------------------------ |
-| `make: *** No rule to make target 'build-cow_test'` | cow_test.c 文件不存在或编译失败，检查 `user/cow_test.c`      |
-| `undefined reference to cow functions`              | 确保 `kern/mm/cow.c` 存在且被编译，检查 Makefile 中 KSRCDIR 是否包含 kern/mm |
-| QEMU 无法启动                                       | 检查 QEMU 是否安装：`qemu-system-riscv64 --version`          |
-| 输出显示部分 COW 测试失败                           | 说明内核的 fork、page fault handler 等需要集成 COW 调用      |
+![003](003.jpg)
 
 ---
 
-## 五、用户程序的加载机制
+# 扩展练习 Challenge2：用户程序的加载机制
 
-### 5.1 uCore 中的程序加载时机
+## 用户程序何时被预先加载到内存中？
 
-在 uCore 中，用户程序采用 **提前加载（Eager Loading）** 机制：
+uCore 中的用户程序在内核启动时被预先加载到内存中。具体来说，当 `kern_init()` 调用 `proc_init()` 创建 init 进程时，会通过 `init_main()` 调用 `kernel_execve()` 执行用户程序。最终在 `load_icode()` 函数（位于 `kern/process/proc.c`）中，一次性将整个 ELF 文件加载到物理内存。这个过程包括分配物理页面、拷贝 TEXT/DATA/BSS 段、建立页表映射和设置 trapframe。
 
-```
-┌─────────────────┐
-│   内核启动       │
-│  (kern_init)    │
-└────────┬────────┘
-         │
-         v
-┌─────────────────┐
-│  proc_init()    │  创建 idle 和 init 进程
-└────────┬────────┘
-         │
-         v
-┌──────────────────┐
-│ kernel_thread()  │  创建 user_main 内核线程
-│ (init_main)      │
-└────────┬─────────┘
-         │
-         v
-┌──────────────────┐
-│ kernel_execve()  │  执行用户程序
-│ (user_main)      │  加载 ELF 二进制
-└────────┬─────────┘
-         │
-         v
-┌──────────────────┐
-│ load_icode()     │  【关键步骤】
-│                  │  1. 读取 ELF 头
-│                  │  2. 分配物理页面
-│                  │  3. 拷贝 TEXT/DATA
-│                  │  4. 建立页表映射
-│                  │  5. 跳转执行
-└──────────────────┘
-```
+## 与常用操作系统的加载方式有何区别？
 
-### 5.2 加载步骤详解
+uCore 采用提前加载（Eager Loading）方式，在内核启动时就将整个程序加载到内存中，这与 Linux 的按需加载（Lazy Loading）方式完全不同。Linux 在程序运行时才动态加载页面，每当访问未加载的页面时会触发 page fault，然后内核才将该页面加载到内存。这导致 uCore 的内存占用较高但启动流畅，而 Linux 的内存占用较低但会频繁发生 page fault。
 
-```c
-// kern/process/proc.c
-static int load_icode(unsigned char *binary, size_t size)
-{
-    // 【步骤 1】创建 mm_struct（进程的内存管理结构）
-    struct mm_struct *mm = mm_create();
-    
-    // 【步骤 2】创建新的页目录表 (PDT)
-    setup_pgdir(mm);
-    
-    // 【步骤 3】解析 ELF 文件
-    struct elfhdr *elf = (struct elfhdr *)binary;
-    struct proghdr *ph = (struct proghdr *)(binary + elf->e_phoff);
-    
-    // 【步骤 4】加载 ELF 的每个 Program Header
-    for (struct proghdr *ph_end = ph + elf->e_phnum; ph < ph_end; ph++) {
-        if (ph->p_type != ELF_PT_LOAD)
-            continue;
-        
-        // 创建虚拟内存区域 (VMA)
-        mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL);
-        
-        // 分配物理页面并拷贝数据
-        unsigned char *from = binary + ph->p_offset;
-        while (start < end) {
-            struct Page *page = pgdir_alloc_page(mm->pgdir, la, perm);
-            memcpy(page2kva(page) + off, from, size);
-        }
-    }
-    
-    // 【步骤 5】建立用户栈
-    mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, VM_READ | VM_WRITE | VM_STACK, NULL);
-    
-    // 【步骤 6】设置页表和 satp 寄存器
-    lsatp(PADDR(mm->pgdir));
-    
-    // 【步骤 7】准备 trapframe（返回用户空间时使用）
-    tf->gpr.sp = USTACKTOP;           // 栈指针
-    tf->epc = elf->e_entry;           // 入口地址
-    tf->status = (sstatus & ~SSTATUS_SPP) | SSTATUS_SPIE;  // 返回用户态
-    
-    return 0;
-}
-```
+## 原因是什么？
 
-### 5.3 与常用 OS 的加载方式对比
+uCore 采用提前加载主要是出于教学目的。首先，这种方式大大简化了实现，避免了复杂的动态链接机制，使学生能够专注于内存管理和进程管理的核心概念。其次，uCore 运行在 QEMU 模拟器上，I/O 延迟较大，一次性加载整个程序比多次 page fault 更高效。第三，uCore 的模拟环境内存有限（通常只有几十 MB），一次性分配内存更容易控制和调试。最后，提前加载避免了运行时的不确定性因素，使程序行为更加可预测。
 
-| 特性           | uCore               | Linux                 | Windows            |
-| -------------- | ------------------- | --------------------- | ------------------ |
-| **加载时机**   | 内核启动时提前加载  | 按需加载（延迟加载）  | 按需加载           |
-| **初始化方式** | 单一 init 进程启动  | init 进程 + 系统服务  | System 进程 + 服务 |
-| **内存映射**   | 静态创建所有 VMA    | 动态创建 VMA          | 动态创建 VMA       |
-| **链接方式**   | 静态链接内嵌        | 动态链接              | 动态链接           |
-| **地址空间**   | 固定内核 + 用户空间 | ASLR 随机化           | ASLR 随机化        |
-| **页面加载**   | 全量加载            | 按需加载 (page fault) | 按需加载           |
-
-### 5.4 为什么 uCore 采用提前加载？
-
-**原因 1：教学目标**
-
-- 简化实现，便于学生理解完整的内存管理流程
-- 避免复杂的动态链接机制
-
-**原因 2：性能特点**
-
-- uCore 运行在模拟器上，I/O 延迟大
-- 提前加载可以减少多次中断和上下文切换
-- 适合嵌入式系统场景
-
-**原因 3：可预测性**
-
-- 启动时一次性分配，易于调试
-- 避免运行时页错误的复杂处理
-
-**原因 4：资源受限**
-
-- uCore 模拟环境内存有限
-- 提前加载可以及时发现内存不足
-
-**原因 5：架构简化**
-
-```c
-// Linux 的动态加载需要：
-// 1. 文件系统支持
-// 2. 动态链接器 (ld.so)
-// 3. 信号机制
-// 4. VMA 分割管理
-// ...
-
-// uCore 的提前加载只需要：
-// 1. ELF 解析
-// 2. 页表设置
-// 3. 内存分配
-```
-
----
-
-## 六、性能影响分析
-
-### 6.1 COW 性能优化
-
-| 操作       | 时间复杂度  | 优化效果                     |
-| ---------- | ----------- | ---------------------------- |
-| fork()     | O(n) → O(n) | 减少内存拷贝（延迟到写操作） |
-| 页错误处理 | O(1)        | 快速页拷贝                   |
-| 进程切换   | O(1)        | TLB 刷新成本                 |
-
-### 6.2 内存使用优化
-
-```
-不使用 COW:
-┌─────────────┐
-│ 父进程: 4MB │
-├─────────────┤
-│ 子进程: 4MB │  总计 8MB
-├─────────────┤
-│ (2份副本)   │
-└─────────────┘
-
-使用 COW:
-┌─────────────┐
-│ 共享: 4MB   │
-├─────────────┤
-│ 写产生的页: < 1MB (通常)
-├─────────────┤
-│ (节省 > 75%)
-└─────────────┘
-```
-
----
-
-## 总结
-
-本实现提供了一个完整、安全的 Copy-on-Write 机制：
-
-- ✅ **状态管理**：清晰的 FSM 状态转换
-- ✅ **故障处理**：正确的 COW 故障检测和处理
-- ✅ **防 Dirty COW**：使用关中断 + Double-check pattern
-- ✅ **资源管理**：正确的引用计数管理
-- ✅ **集成度高**：与现有异常处理无缝集成
-- ✅ **可测试性**：完整的单元测试和集成测试
-
-
-
+相比之下，Linux 采用按需加载是因为它需要支持生产环境的需求，包括大型程序、动态链接库、虚拟内存置换等复杂机制。按需加载能够充分利用有限的物理内存，支持运行时加载和卸载模块，提供更好的灵活性和可扩展性。

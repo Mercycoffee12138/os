@@ -368,8 +368,7 @@ void exit_range(pde_t *pgdir, uintptr_t start, uintptr_t end)
  * process B
  * @to:    the addr of process B's Page Directory
  * @from:  the addr of process A's Page Directory
- * @share: flags to indicate to dup OR share. We just use dup method, so it
- * didn't be used.
+ * @share: flags to indicate to dup OR share. When share=1, use COW mechanism.
  *
  * CALL GRAPH: copy_mm-->dup_mmap-->copy_range
  */
@@ -399,42 +398,41 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             uint32_t perm = (*ptep & PTE_USER);
             // get page from ptep
             struct Page *page = pte2page(*ptep);
-            // alloc a page for process B
-            struct Page *npage = alloc_page();
             assert(page != NULL);
-            assert(npage != NULL);
-            int ret = 0;
-            /* LAB5:EXERCISE2 2313211
-             * replicate content of page to npage, build the map of phy addr of
-             * nage with the linear addr start
-             *
-             * Some Useful MACROs and DEFINEs, you can use them in below
-             * implementation.
-             * MACROs or Functions:
-             *    page2kva(struct Page *page): return the kernel vritual addr of
-             * memory which page managed (SEE pmm.h)
-             *    page_insert: build the map of phy addr of an Page with the
-             * linear addr la
-             *    memcpy: typical memory copy function
-             *
-             * (1) find src_kvaddr: the kernel virtual address of page
-             * (2) find dst_kvaddr: the kernel virtual address of npage
-             * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
-             * (4) build the map of phy addr of  nage with the linear addr start
-             */
-            void *src_kvaddr = page2kva(page);
-            void *dst_kvaddr = page2kva(npage);
-            
-            memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
-            ret = page_insert(to, npage, start, perm);
 
-            //assert(ret == 0);
+            if (share) {
+                // COW mechanism: share the physical page instead of copying
+                // 1. Set both parent and child page as read-only with COW flag
+                // 2. Increase reference count of the shared page
+                
+                // Remove write permission and add COW flag
+                uint32_t cow_perm = (perm & ~PTE_W) | PTE_COW;
+                
+                // Update parent's PTE to be read-only with COW flag
+                *ptep = pte_create(page2ppn(page), cow_perm);
+                tlb_invalidate(from, start);
+                
+                // Set child's PTE to same read-only page with COW flag
+                *nptep = pte_create(page2ppn(page), cow_perm);
+                
+                // Increase reference count
+                page_ref_inc(page);
+            } else {
+                // Original behavior: allocate new page and copy content
+                struct Page *npage = alloc_page();
+                assert(npage != NULL);
+                int ret = 0;
+                
+                void *src_kvaddr = page2kva(page);
+                void *dst_kvaddr = page2kva(npage);
+                memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+                ret = page_insert(to, npage, start, perm);
 
-            // 添加错误处理：如果 page_insert 失败，必须释放 npage
-            if (ret != 0) {
-                cprintf("copy_range: page_insert failed at 0x%x\n", start);
-                free_page(npage);
-                return ret;
+                if (ret != 0) {
+                    cprintf("copy_range: page_insert failed at 0x%x\n", start);
+                    free_page(npage);
+                    return ret;
+                }
             }
         }
         start += PGSIZE;
@@ -451,6 +449,56 @@ void page_remove(pde_t *pgdir, uintptr_t la)
     {
         page_remove_pte(pgdir, la, ptep);
     }
+}
+
+// do_cow_fault - handle Copy-On-Write page fault
+// When a write access occurs to a COW page, this function:
+// 1. Allocates a new page
+// 2. Copies the content from the shared page
+// 3. Updates the PTE to point to the new page with write permission
+// 4. Decrements the reference count of the old page
+// Returns 0 on success, -E_NO_MEM on failure
+int do_cow_fault(struct mm_struct *mm, uintptr_t addr, pte_t *ptep)
+{
+    // Get the original page
+    struct Page *old_page = pte2page(*ptep);
+    
+    // Get original permissions (without COW flag, with write permission restored)
+    uint32_t perm = (*ptep & PTE_USER);
+    perm = (perm & ~PTE_COW) | PTE_W;  // Remove COW flag, add write permission
+    
+    // Check if this page is only referenced by current process
+    if (page_ref(old_page) == 1) {
+        // Only one reference, just update permissions directly
+        *ptep = pte_create(page2ppn(old_page), perm);
+        tlb_invalidate(mm->pgdir, addr);
+        return 0;
+    }
+    
+    // Multiple references, need to copy the page
+    struct Page *new_page = alloc_page();
+    if (new_page == NULL) {
+        return -E_NO_MEM;
+    }
+    
+    // Copy content from old page to new page
+    void *src = page2kva(old_page);
+    void *dst = page2kva(new_page);
+    memcpy(dst, src, PGSIZE);
+    
+    // Update PTE to point to new page with write permission
+    // First decrease ref of old page
+    page_ref_dec(old_page);
+    if (page_ref(old_page) == 0) {
+        free_page(old_page);
+    }
+    
+    // Set new page's ref and update PTE
+    set_page_ref(new_page, 1);
+    *ptep = pte_create(page2ppn(new_page), perm);
+    tlb_invalidate(mm->pgdir, addr);
+    
+    return 0;
 }
 
 // page_insert - build the map of phy addr of an Page with the linear addr la

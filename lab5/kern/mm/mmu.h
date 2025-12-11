@@ -80,6 +80,9 @@
 #define PTE_D 0x080    // Dirty
 #define PTE_SOFT 0x300 // Reserved for Software
 
+// COW (Copy-On-Write) flag - using one of the software-reserved bits
+#define PTE_COW 0x100  // Copy-On-Write page (bit 8, in PTE_SOFT range)
+
 #define PAGE_TABLE_DIR (PTE_V)
 #define READ_ONLY (PTE_R | PTE_V)
 #define READ_WRITE (PTE_R | PTE_W | PTE_V)
