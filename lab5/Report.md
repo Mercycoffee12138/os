@@ -1292,378 +1292,1235 @@ uCore 采用提前加载主要是出于教学目的。首先，这种方式大�
 
 ---
 
-## 第一部分：QEMU源码关键调用路径与分支说明
+# Lab2：QEMU 4.1.1 地址转换 / TLB 调试流程与问题回答
 
-### 1.1 访存指令在QEMU中的处理流程
-
-当uCore内核执行访存指令（如`lw`、`sw`、`jalr`等）时，QEMU模拟器需要将**虚拟地址翻译为物理地址**。整个过程涉及以下关键路径：
-
-```
-访存指令执行（如lw, sw, jalr）
-    ↓
-QEMU TCG后端模拟该指令
-    ↓
-调用 get_page_addr_code() / get_page_addr_data()
-    ↓
-TLB查找 tlb_fill() [accel/tcg/cputlb.c]
-    ↓
-TLB miss ？
-    ├─ 是 → riscv_cpu_tlb_fill() [target/riscv/cpu_helper.c:438]
-    │       ↓
-    │       get_physical_address() [target/riscv/cpu_helper.c:158]
-    │       ↓
-    │       三级页表遍历循环
-    │       ↓
-    │       返回物理地址，写入TLB
-    │
-    └─ 否 → 直接返回TLB中缓存的物理地址
-```
-
-### 1.2 关键源码文件与函数
-
-| 文件 | 函数 | 行号 | 功能 |
-|------|------|------|------|
-| `accel/tcg/cputlb.c` | `tlb_fill()` | 878 | TLB缺失异常处理入口 |
-| `accel/tcg/cputlb.c` | `get_page_addr_code()` | 1033 | 获取指令地址的物理页 |
-| `target/riscv/cpu_helper.c` | `riscv_cpu_tlb_fill()` | 438 | RISC-V的TLB缺失处理 |
-| `target/riscv/cpu_helper.c` | `get_physical_address()` | 158 | 核心：执行页表遍历翻译 |
-| `target/riscv/cpu_helper.c` | 三级循环 | 237 | for(i=0; i<levels; i++) |
-
-### 1.3 关键分支说明
-
-在 `get_physical_address()` 内部：
-
-```c
-// 第一个关键分支：是否开启分页？
-if (mode == PRV_M || !riscv_feature(env, RISCV_FEATURE_MMU)) {
-    *physical = addr;  // 直接映射：物理地址 = 虚拟地址
-    return TRANSLATE_SUCCESS;
-}
-
-// 第二个关键分支：SATP寄存器值，决定页表模式
-vm = get_field(env->satp, SATP_MODE);
-switch (vm) {
-    case 8:  // SV39模式（三级39位虚拟地址）
-        levels = 3;
-        ptidxbits = 9;
-        ptesize = 8;
-        break;
-}
-
-// 第三个关键分支：三级循环中，PTE有效性判断
-for (i = 0; i < levels; i++, ptshift -= ptidxbits) {
-    target_ulong idx = (addr >> (PGSHIFT + ptshift)) & ((1 << ptidxbits) - 1);
-    target_ulong pte_addr = base + idx * ptesize;
-    target_ulong pte = ldq_phys(cs->as, pte_addr);
-    
-    if (!(pte & PTE_V)) {
-        // 无效页表项，异常
-    } else if (!(pte & (PTE_R | PTE_W | PTE_X))) {
-        // 指针节点，继续遍历下一层
-        base = (pte >> PTE_PPN_SHIFT) << PGSHIFT;
-    } else {
-        // 叶子节点，找到物理页号，break
-    }
-}
-```
+> 环境：QEMU 4.1.1（riscv64-softmmu）+ uCore Lab2  
+> 目标：通过 **调试 QEMU 源码**观察“TLB 查找 → TLB miss → 页表走查（SV39）→ 填充 TLB”，并对比 **未开启分页（satp=0）** 与 **开启分页（SV39）** 的差异。
 
 ---
 
-## 第二部分：虚拟地址到物理地址翻译的实际演示
+## 一、三终端分别做什么
 
-### 2.1 调试数据：第一次TLB miss翻译
+- 终端1（运行 QEMU）：`make debug`（Makefile 里带 `-s -S`）
+  - `-s`：开启 gdbstub `localhost:1234`
+  - `-S`：CPU 上电先暂停
+- 终端2（客体 GDB，调 uCore）：`make gdb` → `target remote localhost:1234`
+- 终端3（宿主 GDB，调 QEMU）：`sudo gdb <qemu-system-riscv64>` → `attach <PID>`
 
-当内核初始化时，访问虚拟地址 `0xffffffffc02000d8`（kern_init函数入口）时：
-
-```
-(gdb) print /x env->satp
-$26 = 0x8000000000080204
-
-(gdb) print /x addr
-$27 = 0xffffffffc02000d8
-
-(gdb) print mode
-$29 = 1  // PRV_S（Supervisor模式）
-```
-
-### 2.2 分页模式识别
-
-```
-(gdb) print vm
-$32 = 8  // SV39模式，三级页表
-```
-
-### 2.3 三级循环执行（第一层 i=0，L2）
-
-循环初始值：
-- `levels = 3, ptidxbits = 9, ptesize = 8`
-- `ptshift = (3-1)*9 = 18`
-
-**计算L2级索引**：
-```
-(gdb) print i
-$33 = 0  // 第一层
-
-(gdb) print /x idx
-$36 = 0x1ff  // 从虚拟地址提取的L2 VPN
-```
-
-**计算L2级PTE物理地址**：
-```
-(gdb) print /x pte_addr
-$35 = 0x7f  // base + 0x1ff * 8
-```
-
-**读取L2级PTE**：
-```
-(gdb) print /x pte
-$45 = 0x62746fb4e818  // 读出的PTE内容，物理页号在高位
-```
-
-### 2.4 最终物理地址计算
-
-由于L2级的PTE包含R权限（叶子节点），循环在i=0时结束：
-
-```
-(gdb) print /x *physical
-$46 = 0x80200000  // 最终物理地址
-```
-
-**虚拟→物理映射结果**：
-```
-虚拟地址：0xffffffffc02000d8  →  物理地址：0x80200000
-```
+注意：终端3一旦在断点处停住，QEMU vCPU 线程也停住，终端2会表现为 `Continuing.` 不动；所以终端3看完要及时 `c` 放行。
 
 ---
 
-## 第三部分：页表翻译的单步调试与详细流程解释
+## 二、真实调试流程记录
 
-### 3.1 三级循环的本质
+### 0）启动与连接
 
-RISC-V SV39分页使用三级页表，虚拟地址结构为：
+终端1（在 `lab2/lab2`）：
 
-```
-虚拟地址（64位）
-┌──────────────────────────────────────────┐
-│ 高25位 │ VPN[2] │ VPN[1] │ VPN[0] │ offset │
-│ 符号扩展 │ 9位   │ 9位   │ 9位   │ 12位 │
-└──────────────────────────────────────────┘
-            L2      L1      L0     页内
+```sh
+make debug
 ```
 
-三级循环对应三个查表步骤：
-
-```c
-for (i = 0; i < levels; i++, ptshift -= ptidxbits) {
-    // i=0: ptshift=18, 从虚拟地址[29:21]提取L2的VPN(9位)
-    // i=1: ptshift=9,  从虚拟地址[20:12]提取L1的VPN(9位)
-    // i=2: ptshift=0,  从虚拟地址[11:3]提取L0的VPN(9位)
-    
-    target_ulong idx = (addr >> (PGSHIFT + ptshift)) & ((1 << ptidxbits) - 1);
-    // 提取虚拟地址的某一部分作为页表索引（0-511）
-    
-    target_ulong pte_addr = base + idx * ptesize;
-    // 计算该层页表项在物理内存中的地址
-    
-    target_ulong pte = ldq_phys(cs->as, pte_addr);
-    // 从物理内存读取该页表项内容（8字节）
-}
-```
-
-### 3.2 两行关键操作的详细解释
-
-#### 操作一：计算PTE物理地址
-
-```c
-target_ulong pte_addr = base + idx * ptesize;
-```
-
-**含义**：
-- **base**：当前层页表的物理基址
-  - 初始值：`SATP[PPN] << PGSHIFT`（从SATP寄存器读出）
-  - 后续值：上一层PTE中的物理页号，左移12位（乘以4096）
-- **idx**：当前层的页表索引（0-511），由虚拟地址的9位VPN提取
-- **ptesize**：8字节，64位
-- **结果**：当前PTE在物理内存中的精确地址
-
-#### 操作二：从物理内存读取PTE
-
-```c
-target_ulong pte = ldq_phys(cs->as, pte_addr);
-```
-
-**含义**：
-- **ldq_phys()**：QEMU提供的函数，用于从物理地址空间读取64位数据
-- **cs->as**：当前CPU的地址空间
-- **pte_addr**：上一步计算的物理地址
-- **返回值 pte**：该物理地址处的8字节内容，结构为：
-  - 位0：V（有效位）
-  - 位1：R（可读）
-  - 位2：W（可写）
-  - 位3：X（可执行）
-  - 位4-9：暂留位，QEMU用于A、D位等
-  - 位10-63：物理页号（PPN），44位
-
-### 3.3 调试步骤详解
-
-按照如下步骤单步调试，观察完整的三层遍历：
+终端2：
 
 ```gdb
-# 进入三级循环
-(gdb) step  # 执行到 for (i = 0; i < levels; i++)
+make gdb
+set remotetimeout unlimited
+```
 
-# ========== 第一层循环（i=0, L2） ==========
-(gdb) print i
-$53 = 0  // 第一层
+终端3（先找 PID，再 attach）：
 
-(gdb) print /x idx
-$54 = 0x1ff  // L2的VPN，从虚拟地址[29:21]提取
+```sh
+pgrep -f qemu-system-riscv64
+sudo gdb 
+```
 
-(gdb) step  # 执行 pte_addr = base + idx * ptesize
-(gdb) print /x pte_addr
-$55 = 0x80204ff8  // base + 0x1ff*8 = 当前L2页表项地址
-
-(gdb) step  # 执行 pte = ldq_phys(...)
-(gdb) print /x pte
-$56 = 0x20xxxxxxxx  // 读出的L2级页表项内容
-
-# 检查是否为叶子节点
-(gdb) print /x (pte & 0xe)  // R|W|X位
-$57 = 0xc  // 非零，有权限，这是叶子节点，break
-
-(gdb) print /x (pte >> PTE_PPN_SHIFT)  // 物理页号
-$58 = 0x80200  // 4K页的物理页号
-
-# ========== 如果不是叶子，进入第二层循环（i=1, L1） ==========
-# （此例中第一层已是叶子，所以不再演示）
-
-# ========== 最终物理地址计算 ==========
-(gdb) print /x *physical
-$59 = 0x80200000  // ppn | (vpn_offset) << PGSHIFT
+```gdb
+attach <PID>
+handle SIGPIPE nostop noprint
+c
 ```
 
 ---
 
-## 第四部分：QEMU中TLB查找源码与调试演示
+### 1）任务1
 
-### 4.1 TLB查找的源码位置
+调用链：
 
-QEMU在 `accel/tcg/cputlb.c` 中实现了软件模拟的TLB：
+1. target/riscv/cpu_helper.c:riscv_cpu_tlb_fill(...)
+2. target/riscv/cpu_helper.c:get_physical_address(...)（页表翻译核心）
+3. include/exec/memory_ldst_phys.inc.h:ldq_phys() / ldl_phys()（读 PTE）
+4. 返回后 accel/tcg/cputlb.c:tlb_set_page() → tlb_set_page_with_attrs()（写入软件 TLB）
 
-```c
-// 文件：accel/tcg/cputlb.c
-// 函数：tlb_fill() 第878行
-int tlb_fill(CPUState *cpu, target_ulong addr, int size,
-             MMUAccessType access_type, int mmu_idx, 
-             bool probe, uintptr_t retaddr)
-{
-    // 内部逻辑：
-    // 1. 尝试从TLB查找
-    // 2. TLB miss → 调用体系结构特定的tlb_fill函数
-    //              (例如 riscv_cpu_tlb_fill)
-    // 3. 该函数进行页表查找，写入TLB
-    // 4. 返回是否成功
-}
+#### 1.1 在客体侧选择一个“必然触发访存”的位置（kern_init 的 memset）
 
-// 文件：accel/tcg/cputlb.c
-// 函数：get_page_addr_code() 第1033行
-static target_ulong get_page_addr_code(CPURISCVState *env,
-                                       target_ulong addr)
-{
-    index = tlb_index(env, mmu_idx, addr);        // 计算TLB索引
-    entry = tlb_entry(env, mmu_idx, addr);        // 获取TLB条目指针
-    
-    if (likely(entry->addr_code != -1 &&
-               (addr & TARGET_PAGE_MASK) == 
-               (entry->addr_code & TARGET_PAGE_MASK))) {
-        // TLB hit：虚拟地址与TLB条目的tag匹配
-        return entry->addr_code & TARGET_PAGE_MASK;  // 返回物理页
-    } else {
-        // TLB miss：调用tlb_fill进行页表查找
-        tlb_fill(cpu, addr, 0, MMU_INST_FETCH, mmu_idx, false, retaddr);
-        ...
-    }
-}
-```
-
-### 4.2 TLB查找的实际调用链（GDB调试得到）
-
-从本次调试Session中观察到的真实调用栈：
-
-```
-get_physical_address() [accel/tcg/cputlb.c:252行，读PTE]
-    ↑ Value returned is $44 = 536871119
-riscv_cpu_tlb_fill() [target/riscv/cpu_helper.c:451行]
-    ↑ ret = get_physical_address(...)
-tlb_fill() [accel/tcg/cputlb.c:878行]
-    ↑ ok = cc->tlb_fill(cpu, ...)
-get_page_addr_code() [accel/tcg/cputlb.c:1033行]
-    ↑ phys_pc = get_page_addr_code(desc.env, pc);
-tb_htable_lookup() [accel/tcg/cpu-exec.c:339行]
-    ↑ 查找translation block，需要虚拟地址对应的物理页
-```
-
-这个栈清晰地表明：首先get_page_addr_code()尝试获取指令对应的物理地址，若TLB miss，则逐级调用tlb_fill()和riscv_cpu_tlb_fill()，最后调用get_physical_address()进行页表查找。
-
-### 4.3 TLB的内部数据结构
-
-```c
-// QEMU的TLB条目定义
-typedef struct CPUTLBEntry {
-    uint64_t addr_read;    // 读访问的虚拟地址tag
-    uint64_t addr_write;   // 写访问的虚拟地址tag
-    uint64_t addr_code;    // 取指的虚拟地址tag
-    uint64_t addend;       // 物理地址加数：phys_addr = vaddr + addend
-    // addend技巧：将虚拟地址直接加上addend就得到物理地址
-} CPUTLBEntry;
-
-// TLB查找的关键算法
-target_ulong tlb_index(CPURISCVState *env, int mmu_idx, target_ulong addr)
-{
-    uintptr_t size_mask = env_tlb(env)->f[mmu_idx].mask >> CPU_TLB_ENTRY_BITS;
-    return (addr >> TARGET_PAGE_BITS) & size_mask;
-}
-
-// TLB查找逻辑
-CPUTLBEntry *entry = &tlb_table[mmu_idx][index];
-if (entry->addr_code == (addr & TARGET_PAGE_MASK)) {
-    // tag匹配，hit
-    return phys_page;
-} else {
-    // tag不匹配，miss，调用tlb_fill
-}
-```
-
-### 4.4 调试演示：观察TLB miss引发的页表查找
-
-在Terminal 3中设置条件断点，捕捉SATP≠0的地址翻译：
+终端2：
 
 ```gdb
-(gdb) delete 1
-(gdb) b get_physical_address if env->satp != 0
-Breakpoint 2 at 0x62746f64a55c
+b kern_init
+c
+```
 
+然后我们使用`x/8i $pc`来查看接下来的一些指令：
+
+```
+(gdb) x/8i $pc
+=> 0xffffffffc020004a <kern_init>:      auipc   a0,0xb3   
+   0xffffffffc020004e <kern_init+4>:
+   0xffffffffc020004e <kern_init+4>:
+    addi        a0,a0,670
+   0xffffffffc0200052 <kern_init+8>:    auipc   a2,0xb7
+   0xffffffffc0200056 <kern_init+12>:        
+    addi        a2,a2,1858
+   0xffffffffc020005a <kern_init+16>:        
+    addi        sp,sp,-16
+   0xffffffffc020005c <kern_init+18>:   sub     a2,a2,a0
+   0xffffffffc020005e <kern_init+20>:   li      a1,0
+   0xffffffffc0200060 <kern_init+22>:   sd      ra,8(sp)
+```
+
+我们si单步执行到访存指令sd之前，然后回到终端3打下断点并放行
+
+```
+b get_physical_address if addr==0xffffffffc0209ff8
+c
+```
+
+然后在终端2继续单步执行si，这样我们运行到了sd命令中，终端3就会命中断点：
+
+```
+Thread 1 "qemu-system-ris" hit Breakpoint 1, get_physical_address (env=0x614a1bc08cf0, physical=0x7ffcfc595bc8, prot=0x7ffcfc595bc0, addr=18446744072637907018, access_type=0, mmu_idx=1) at /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c:158
+158     {
+```
+
+然后我们在终端3查看其正要被翻译的虚拟地址addr
+
+```
+p/x addr
+```
+
+输出如下：
+
+```
+(gdb) p/x addr
+$2 = 0xffffffffc0209ff8
+```
+
+然后在终端3中运行到写物理地址（写physical）的地方
+
+```
+watch *(unsigned long long*)physical
+c
+```
+
+到达这里之后查看虚拟地址和对应的物理地址
+
+```
+p/x addr
+p/x *physical
+```
+
+得到输出结果
+
+```
+(gdb) p/x addr
+$2 = 0xffffffffc0209ff8
+(gdb) p/x *physical
+$3 = 0x80209000
+```
+
+这就是`0xffffffffc0209ff8`这个虚拟地址被翻译成了物理地址`0x80209000`
+
+然后多continue几次，让终端2中的si指令被放行，然后回到终端2，查看sp的值
+
+```
+i r sp
+```
+
+输出如下：
+
+```
+(gdb) i r sp
+sp             0xffffffffc0209ff0       0xfff
+```
+
+显然，这里访存的地址+8（偏移量），就是终端3中的地址，也就是我们刚才看的那个地址。
+
+### 2）任务2：单步调试页表翻译的部分，解释一下关键的操作流程。
+
+同样，先：
+
+终端1：
+
+```sh
+make debug
+```
+
+终端2：
+
+```gdb
+make gdb
+set remotetimeout unlimited
+```
+
+终端3（先找 PID，再 attach）：
+
+```sh
+pgrep -f qemu-system-riscv64
+sudo gdb 
+```
+
+```gdb
+attach <PID>
+handle SIGPIPE nostop noprint
+c
+```
+
+以上一系列做完之后，终端2中
+
+```
+(gdb) b kern_init
+(gdb) c
+(gdb) p/x (unsigned long long)edata
+(gdb) p/x (unsigned long long)end
+(gdb) p/x ((unsigned long long)edata & ~0xfffull)   # edata_page
+```
+
+目的是找到一个.bss清零区域的页基址，后续用它做条件断点，保证抓到第一次写这页时的地址翻译。
+
+然后终端3：
+
+```
+b riscv_cpu_tlb_fill if access_type!=MMU_INST_FETCH && (((unsigned long long)address & ~0xfffull)==0xffffffffc02b3000)
+c
+```
+
+然后终端2也continue一下放行
+
+```
+c
+```
+
+命中之后，看一下addr的值,这就是正在翻译的值。
+
+```
+p/x address
+```
+
+得到结果：
+
+```
+$1 = 0xffffffffc02b32e8
+```
+
+然后进入get_physical_address
+
+```
+tbreak get_physical_address
+c
+```
+
+然后确认一下根页表
+
+```
+p/x env->satp
+```
+
+结果如下：
+
+```
+$2 = 0x800000000008020a
+```
+
+然后确认下分页模式
+
+```
+p/x (env->satp >> 60)                          # mode：8=SV39
+```
+
+结果为`$3 = 0x8`，说明是SV39.
+
+然后看下根页表物理地址
+
+```
+p/x (env->satp & ((1ULL<<44)-1))               # PPN
+p/x ((env->satp & ((1ULL<<44)-1)) << 12)       # root_pt_pa
+```
+
+结果如下：
+
+```
+(gdb) p/x (env->satp & ((1ULL<<44)-1))
+$4 = 0x8020a
+(gdb) p/x ((env->satp & ((1ULL<<44)-1)) << 12) 
+$5 = 0x8020a000
+```
+
+最后再看下正在翻译的地址
+
+```
+p/x addr
+```
+
+和上面看到的那个地址相同：
+
+```
+$6 = 0xffffffffc02b32e8
+```
+
+然后我们看读pte的瞬间：先断到ldq_phys函数
+
+```
+tbreak ldq_phys
+c
+```
+
+然后出来拿到pte物理地址
+
+```
+up
+p/x pte_addr
+```
+
+结果如下：
+
+```
+(gdb) p/x pte_addr
+$7 = 0x8020aff8
+```
+
+然后跑完
+
+```
+down
+finish
+```
+
+finish 返回后 gdb 会提示：Value returned is $N = <pte值>，这个 $N 就是本层 PTE 内容。结果如下：
+
+```
+(gdb) finish
+Run till exit from #0  ldq_phys (as=0x55572dd79770,
+    addr=2149625848)
+    at /mnt/c/Users/13081/qemu-4.1.1/include/exec/memory_ldst_phys.inc.h:32
+0x00005556ef071a69 in get_physical_address (env=0x55572dd6bcf0, physical=0x7bfc39ffde30, prot=0x7bfc39ffde24, addr=18446744072638640872, access_type=1, mmu_idx=1) at /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c:252
+252             target_ulong pte = ldq_phys(cs->as, pte_addr);
+Value returned is $8 = 536871119
+```
+
+然后我们解码pte
+
+```
+p/x $N  
+p/x ($N & 1)       # V
+p/x ($N & 0xe)     # R/W/X：0=指针节点；非0=叶子节点
+```
+
+```
+(gdb) p/x $8
+$9 = 0x200000cf
+(gdb) p/x ($8 & 1)
+$10 = 0x1
+(gdb) p/x ($8 & 0xe)
+$11 = 0xe
+```
+
+然后验证pa写入了`*physical`
+
+```
+watch *(unsigned long long*)physical
+c
+p/x addr
+p/x *physical
+```
+
+结果如下：
+
+```
+(gdb) p/x addr
+$12 = 0xffffffffc02b32e8
+(gdb) p/x *physical
+$13 = 0x802b3000
+```
+
+可以看到，`0xffffffffc02b32e8`这个虚拟地址被翻译成了 物理地址`0x802b3000`。我们本题的调试就这样结束了。
+
+### 2）任务3：是否能够在qemu-4.1.1的源码中找到模拟cpu查找tlb的C代码，通过调试说明其中的细节
+
+源码：
+
+```
+在 qemu-4.1.1/accel/tcg/cputlb.c：
+
+TLB lookup（快路径）：load_helper() / store_helper()
+里面会取 CPUTLBEntry *entry = tlb_entry(env, mmu_idx, addr);
+关键判断是 tlb_hit(...)（以及可能的 victim_tlb_hit(...)）
+命中则直接返回（不会进入 tlb_fill）
+TLB miss 入口：tlb_fill()（只有 miss 才会来）
+填 TLB：tlb_set_page() / tlb_set_page_with_attrs()
+在 qemu-4.1.1/target/riscv/...：
+
+riscv_cpu_tlb_fill()：RISC-V 的 miss 回调
+get_physical_address()：页表 walk（刚才已经单步做过了）
+```
+
+过程
+
+同样，先：
+
+终端1（：
+
+```sh
+make debug
+```
+
+终端2：
+
+```gdb
+make gdb
+set remotetimeout unlimited
+```
+
+终端3（先找 PID，再 attach）：
+
+```sh
+pgrep -f qemu-system-riscv64
+sudo gdb 
+```
+
+```gdb
+attach <PID>
+handle SIGPIPE nostop noprint
+c
+```
+
+以上一系列做完之后，终端2中
+
+```
+(gdb) b kern_init
+(gdb) c
+(gdb) p/x (unsigned long long)edata
+(gdb) p/x (unsigned long long)end
+(gdb) p/x ((unsigned long long)edata & ~0xfffull)   # edata_page
+```
+
+目的是找到一个.bss清零区域的页基址，后续用它做条件断点，保证抓到第一次写这页时的地址翻译。
+
+然后终端3：
+
+```
+b riscv_cpu_tlb_fill if access_type!=MMU_INST_FETCH && (((unsigned long long)address & ~0xfffull)==0xffffffffc02b3000)
+c
+```
+
+然后终端2也continue一下放行
+
+```
+c
+```
+
+命中之后，记录
+
+```
+p/x address
+bt
+```
+
+得到结果
+
+```
+(gdb) p/x address
+$2 = 0xffffffffc02b32e8
+(gdb) bt
+#0  riscv_cpu_tlb_fill
+    (cs=0x5d00820462d0, address=18446744072638640872, size=1, access_type=MMU_DATA_STORE, mmu_idx=1, probe=false, retaddr=129454173062231)   
+    at /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c:438
+#1  0x00005d0056bfa68f in tlb_fill
+    (cpu=0x5d00820462d0, addr=18446744072638640872, size=1, access_type=MMU_DATA_STORE, mmu_idx=1, retaddr=129454173062231)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cputlb.c:878
+#2  0x00005d0056bfe7f4 in store_helper
+    (big_endian=false, size=1, retaddr=129454173062231, oi=1, val=0, addr=18446744072638640872, env=0x5d008204ece0)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cputlb.c:1522
+#3  helper_ret_stb_mmu
+    (env=0x5d008204ece0, addr=18446744072638640872, val=0 '\000', oi=1, retaddr=129454173062231)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cputlb.c:1642
+#4  0x000075bce6000457 in code_gen_buffer ()   
+#5  0x00005d0056c1f2bb in cpu_tb_exec
+    (cpu=0x5d00820462d0, itb=0x75bce6000340 <code_gen_buffer+787>)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cpu-exec.c:173
+#6  0x00005d0056c20101 in cpu_loop_exec_tb     
+    (cpu=0x5d00820462d0, tb=0x75bce6000340 <code_gen_buffer+787>, last_tb=0x75bced2b7518, tb_exit=0x75bced2b7510)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cpu-exec.c:621
+#7  0x00005d0056c20436 in cpu_exec
+    (cpu=0x5d00820462d0)
+    at /mnt/c/Users/13081/qemu-4.1.1/accel/tcg/cpu-exec.c:732
+--Type <RET> for more, q to quit, c to continue without paging--
+#8  0x00005d0056bd2a96 in tcg_cpu_exec
+    (cpu=0x5d00820462d0)
+    at /mnt/c/Users/13081/qemu-4.1.1/cpus.c:1435
+#9  0x00005d0056bd334f in qemu_tcg_cpu_thread_fn (arg=0x5d00820462d0)
+    at /mnt/c/Users/13081/qemu-4.1.1/cpus.c:1743
+#10 0x00005d005707f560 in qemu_thread_start    
+    (args=0x5d008205c970)
+    at util/qemu-thread-posix.c:502
+#11 0x000075bcef694ac3 in start_thread
+    (arg=<optimized out>)
+    at ./nptl/pthread_create.c:442
+#12 0x000075bcef7268c0 in clone3 ()
+    at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+```
+
+然后继续
+
+```
+tbreak tlb_set_page
+c
+p/x vaddr
+p/x paddr
+p prot
+```
+
+得到结果
+
+```
+(gdb) p/x vaddr
+$3 = 0xffffffffc02b3000
+(gdb) p/x paddr
+$4 = 0x802b3000
+(gdb) p prot
+$5 = 7
+```
+
+然后再继续
+
+```
+b riscv_cpu_tlb_fill if access_type!=MMU_INST_FETCH && (((unsigned long long)address & ~0xfffull)==0xffffffffc02b3000)
+c
+```
+
+发现又命中了
+
+```
+(gdb) b riscv_cpu_tlb_fill if access_type!=MMU_INST_FETCH && (((unsigned long long)address & ~0xfffull)==0xffffffffc02b3000)
+Note: breakpoint 1 also set at pc 0x5d0056cb5171.
+Breakpoint 3 at 0x5d0056cb5171: file /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c, line 438.
 (gdb) c
 Continuing.
 
-Thread 3 "qemu-system-ris" hit Breakpoint 2, get_physical_address (
-    env=0x627491b68ce0, physical=0x7caddd8c1d80, ...)
-    at /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c:158
-158 {
-(gdb) print /x env->satp
-$26 = 0x8000000000080204  // SATP非零，分页启用
-
-(gdb) bt
-#0  get_physical_address (...) at cpu_helper.c:158
-#1  0x000062746f64b238 in riscv_cpu_tlb_fill (...)
-    at cpu_helper.c:451
-    // ← TLB miss时调用此函数
-#2  0x000062746f59068f in tlb_fill (...)
-    at cputlb.c:878
-    // ← TLB管理框架
-#3  0x000062746f59xxxx in get_page_addr_code (...)
-    at cputlb.c:1033
-    // ← 正在取指，查TLB，miss了
+Thread 3 "qemu-system-ris" hit Breakpoint 1, riscv_cpu_tlb_fill (cs=0x5d00820462d0, address=18446744072638641912, size=4, access_type=MMU_DATA_LOAD, mmu_idx=1, probe=false, retaddr=129454173153070) at /mnt/c/Users/13081/qemu-4.1.1/target/riscv/cpu_helper.c:438
+438     {
 ```
 
-这个栈跟踪证明了TLB→tlb_fill→riscv_cpu_tlb_fill→get_physical_address的完整调用链。
+我们再去tlb_set_page ，发现它在填同一页：
+
+```
+tbreak tlb_set_page
+c
+p/x vaddr
+p/x paddr
+```
+
+这里输出结果和刚才一样
+
+```
+(gdb) p/x vaddr
+$6 = 0xffffffffc02b3000
+(gdb) p/x paddr
+$7 = 0x802b3000
+```
+
+### 4）仍然是tlb，qemu中模拟出来的tlb和我们真实cpu中的tlb有什么**逻辑上的区别**
+
+过程
+
+同样，先：
+
+终端1：
+
+```sh
+make debug
+```
+
+终端2：
+
+```gdb
+make gdb
+set remotetimeout unlimited
+```
+
+终端3（先找 PID，再 attach）：
+
+```sh
+pgrep -f qemu-system-riscv64
+sudo gdb 
+```
+
+```gdb
+attach <PID>
+handle SIGPIPE nostop noprint
+c
+```
+
+以上一系列做完之后，终端2中打下断点
+
+```
+hbreak *0x80200000
+c
+```
+
+这里因为分页未开时符号虚拟地址不可靠
+
+然后查看下后面的命令：
+
+```
+x/25i $pc
+```
+
+得到结果
+
+```
+(gdb) x/25i $pc
+=> 0x80200000:  auipc   t0,0xb
+   0x80200004:  mv      t0,t0
+   0x80200008:  sd      a0,0(t0)
+   0x8020000c:  auipc   t0,0xb
+   0x80200010:  addi    t0,t0,-4
+   0x80200014:  sd      a1,0(t0)
+   0x80200018:  lui     t0,0xc020a
+   0x8020001c:  addiw   t1,zero,-3
+   0x80200020:  slli    t1,t1,0x1e
+   0x80200022:  sub     t0,t0,t1
+   0x80200026:  srli    t0,t0,0xc
+   0x8020002a:  addiw   t1,zero,-1
+   0x8020002e:  slli    t1,t1,0x3f
+   0x80200030:  or      t0,t0,t1
+   0x80200034:  csrw    satp,t0
+   0x80200038:  sfence.vma
+   0x8020003c:  lui     sp,0xc020a
+   0x80200040:  lui     t0,0xc0200
+   0x80200044:  addi    t0,t0,74
+   0x80200048:  jr      t0
+   0x8020004a:  auipc   a0,0xb3
+   0x8020004e:  addi    a0,a0,670
+   0x80200052:  auipc   a2,0xb7
+   0x80200056:  addi    a2,a2,1858
+   0x8020005a:  addi    sp,sp,-16
+```
+
+这里是 entry.S 的指令序列。
+
+然后我们单步两下到`sd      a0,0(t0)`这个位置
+
+接着，到终端3，我们只抓satp为0的一次翻译。
+
+```
+tbreak get_physical_address if ((env->satp >> 60) == 0)
+```
+
+然后我们去终端2`si`步入那个sd指令
+
+终端3命中后，我们检查satp寄存器的值：
+
+```
+(gdb) p/x env->satp 
+$1 = 0x0
+```
+
+结果是0.
+
+接下来，我们在`ldq_phys`打个断点
+
+```
+tbreak ldq_phys
+c
+```
+
+continue之后，界面一直停在
+
+```
+(gdb) c
+Continuing.
+
+```
+
+这一块，说明`ldq_phys`没有命中。
+
+然后我们ctrl+c停掉，去终端2单步到csrw指令之前
+
+回到终端3，只抓satp为8的
+
+```
+tbreak get_physical_address if ((env->satp >> 60) == 8)
+```
+
+回到终端2`si`单步执行
+
+终端3打印satp寄存器
+
+```
+(gdb) p/x env->satp 
+$3 = 0x800000000008020a
+```
+
+然后尝试进入`ldq_phys`
+
+```
+tbreak ldq_phys
+c
+```
+
+这一次命中了
+
+```
+(gdb) c
+Continuing.
+
+Thread 1 "qemu-system-ris" hit Temporary breakpoint 2, ldq_phys (as=0x635ef11db760, addr=2149621760) at /mnt/c/Users/13081/qemu-4.1.1/include/exec/memory_ldst_phys.inc.h:32
+32                                             
+    MEMTXATTRS_UNSPECIFIED, NULL);
+```
+
+对于以上内容，satp=0 时：get_physical_address 直通（PA=VA），不读 PTE（不命中 ldq_phys）。
+
+satp=SV39 时：get_physical_address 进入页表 walk，会读 PTE（命中 ldq_phys），并通过 tlb_set_page 把结果缓存到 QEMU 的软件 TLB。
+
+# Lab5调试
+
+## 1.ecall
+
+首先需要明确的是ecall指令并没有相关的helper，他是嵌入在异常处理函数之中的。
+
+##### 第一个终端
+
+```
+make debug
+```
+
+##### 第二个终端
+
+```
+pgrep -f qemu-system-riscv64 
+sudo gdb
+(gdb) attach <刚才查到的PID>
+(gdb) handle SIGPIPE nostop noprint
+(gdb) continue # 之后就启动执行
+```
+
+##### 第三个终端
+
+```
+make gdb
+add-symbol-file obj/__user_exit.out
+break user/libs/syscall.c:18
+c
+si直到运行到ecall指令
+```
+
+然后我们回到第二个终端
+
+```
+ctrl+C
+b riscv_cpu_do_interrupt//中断
+b riscv_raise_exception//异常
+```
+
+然后我们回到第三个中断
+
+```
+si
+```
+
+这时我们可以看到第三个终端的执行被卡住了，因为在qemu界面我们执行到了断点。
+
+```
+Continuing.
+[Switching to Thread 0x7ba721307640 (LWP 26147)]
+
+Thread 3 "qemu-system-ris" hit Breakpoint 2, riscv_raise_exception (env=0x5795011a5110, exception=8, pc=0) at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/op_helper.c:31
+31 CPUState *cs = env_cpu(env);
+```
+
+我们可以看到这里出发了异常，异常码为8，在系统中就是ecall指令的编号
+
+我们在cpu_bits.h文件里面可以看到
+
+```
+/* Exception causes */
+#define EXCP_NONE                          -1 /* sentinel value */
+#define RISCV_EXCP_INST_ADDR_MIS           0x0
+#define RISCV_EXCP_INST_ACCESS_FAULT       0x1
+#define RISCV_EXCP_ILLEGAL_INST            0x2
+#define RISCV_EXCP_BREAKPOINT              0x3
+#define RISCV_EXCP_LOAD_ADDR_MIS           0x4
+#define RISCV_EXCP_LOAD_ACCESS_FAULT       0x5
+#define RISCV_EXCP_STORE_AMO_ADDR_MIS      0x6
+#define RISCV_EXCP_STORE_AMO_ACCESS_FAULT  0x7
+#define RISCV_EXCP_U_ECALL                 0x8
+#define RISCV_EXCP_S_ECALL                 0x9
+#define RISCV_EXCP_H_ECALL                 0xa
+#define RISCV_EXCP_M_ECALL                 0xb
+#define RISCV_EXCP_INST_PAGE_FAULT         0xc /* since: priv-1.10.0 */
+#define RISCV_EXCP_LOAD_PAGE_FAULT         0xd /* since: priv-1.10.0 */
+#define RISCV_EXCP_STORE_PAGE_FAULT        0xf /* since: priv-1.10.0 */
+```
+
+0x8就是对应的用户态发出的ecall指令。而我们的系统正是在这个时候从用户态发出了指令。
+
+我们来看一下源码：
+
+```c
+void QEMU_NORETURN riscv_raise_exception(CPURISCVState *env,
+                                          uint32_t exception, uintptr_t pc)
+{
+    CPUState *cs = env_cpu(env);
+    qemu_log_mask(CPU_LOG_INT, "%s: %d\n", __func__, exception);
+    cs->exception_index = exception;
+    cpu_loop_exit_restore(cs, pc);
+}
+```
+
+1. 获取当前CPU的状态结构体（CPUState）。
+
+2. 记录异常类型（exception_index），用于后续trap handler判断异常原因。
+
+3. 输出日志，便于调试。
+
+4.调用 cpu_loop_exit_restore，强制QEMU跳出当前指令执行，进入trap/异常处理流程。
+
+
+
+然后我们还可以出入其他的指令对寄存器的各种状态进行查看。
+
+```
+(gdb) bt
+#0  riscv_raise_exception (env=0x605bbb9e2110, exception=8, pc=0)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/op_helper.c:31
+#1  0x0000605bb05de9e7 in helper_raise_exception (env=0x605bbb9e2110, exception=8)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/op_helper.c:39
+#2  0x00007aa506000124 in code_gen_buffer ()
+#3  0x0000605bb054b2fb in cpu_tb_exec (cpu=0x605bbb9d9700, itb=0x7aa506000040 <code_gen_buffer+19>)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/accel/tcg/cpu-exec.c:173
+#4  0x0000605bb054c141 in cpu_loop_exec_tb (cpu=0x605bbb9d9700, tb=0x7aa506000040 <code_gen_buffer+19>, 
+    last_tb=0x7aa50cb06918, tb_exit=0x7aa50cb06910)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/accel/tcg/cpu-exec.c:621
+#5  0x0000605bb054c476 in cpu_exec (cpu=0x605bbb9d9700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/accel/tcg/cpu-exec.c:732
+#6  0x0000605bb04fead6 in tcg_cpu_exec (cpu=0x605bbb9d9700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/cpus.c:1435
+#7  0x0000605bb04ff38f in qemu_tcg_cpu_thread_fn (arg=0x605bbb9d9700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/cpus.c:1743
+#8  0x0000605bb0981457 in qemu_thread_start (args=0x605bbb9efde0) at util/qemu-thread-posix.c:502
+#9  0x00007aa50d494ac3 in start_thread (arg=<optimized out>) at ./nptl/pthread_create.c:442
+#10 0x00007aa50d5268c0 in clone3 () at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:81
+(gdb) p exception
+$1 = 8
+(gdb) p exception
+$2 = 8
+(gdb) p *env
+$3 = {gpr = {0, 8388724, 2147483216, 0, 0, 0, 2147483544, 0, 2147483508, 2147483508, 30, 73, 8391112, 
+    2147483544, 0, 0, 0, 0, 8388712, 37, 2147483544, 8390372, 18446744073709551615, 8390912, 0, 0, 8391112, 0,   
+    8391112, 0, 0, 0}, fpr = {0 <repeats 32 times>}, pc = 8388868, load_res = 18446744073709551615,
+  load_val = 0, frm = 0, badaddr = 0, priv_ver = 69888, misa = 9223372036856090925,
+  misa_mask = 9223372036856090925, features = 3, priv = 0, resetvec = 4096, mhartid = 0,
+  mstatus = 9223372036855062530, mip = 0, miclaim = 512, mie = 168, mideleg = 546, sptbr = 0,
+  satp = 9223372036855301310, sbadaddr = 0, mbadaddr = 0, medeleg = 45321, stvec = 18446744072637910916,
+  sepc = 8388640, scause = 3, mtvec = 2147484784, mepc = 18446744072637908388, mcause = 9, mtval = 0,
+  scounteren = 18446744073709551615, mcounteren = 18446744073709551615, sscratch = 18446744072640782336,
+  mscratch = 2147597824, mfromhost = 0, mtohost = 0, timecmp = 555326, pmp_state = {pmp = {{
+        addr_reg = 536887295, cfg_reg = 24 '\030'}, {addr_reg = 18446744073709551615, cfg_reg = 31 '\037'}, {    
+        addr_reg = 0, cfg_reg = 0 '\000'} <repeats 14 times>}, addr = {{sa = 2147483648, ea = 2147614719}, {     
+        sa = 0, ea = 18446744073709551615}, {sa = 0, ea = 18446744073709551615}, {sa = 0,
+        ea = 18446744073709551615}, {sa = 0, ea = 18446744073709551615}, {sa = 0, ea = 18446744073709551615}, {  
+        sa = 0, ea = 18446744073709551615}, {sa = 0, ea = 18446744073709551615}, {sa = 0, ea = 0}, {sa = 0,      
+        ea = 0}, {sa = 0, ea = 0}, {sa = 0, ea = 0}, {sa = 0, ea = 0}, {sa = 0, ea = 0}, {sa = 0, ea = 0}, {     
+        sa = 0, ea = 0}}, num_rules = 2}, debugger = false, fp_status = {float_detect_tininess = 0 '\000',       
+    float_rounding_mode = 0 '\000', float_exception_flags = 0 '\000', floatx80_rounding_precision = 0 '\000',    
+    flush_to_zero = 0 '\000', flush_inputs_to_zero = 0 '\000', default_nan_mode = 1 '\001',
+    snan_bit_is_one = 0 '\000'}, timer = 0x605bbba52920}
+(gdb) p pc
+$4 = 0
+(gdb) info registers
+rax            0x605bbb9e2110      105947105992976
+rbx            0x0                 0
+rcx            0x8                 8
+rdx            0x0                 0
+rsi            0x8                 8
+rdi            0x605bbb9e2110      105947105992976
+rbp            0x7aa50cb06370      0x7aa50cb06370
+rsp            0x7aa50cb06340      0x7aa50cb06340
+r8             0x7aa5000528f0      134849088530672
+r9             0x0                 0
+r10            0x7aa50001dcc0      134849088314560
+r11            0x3                 3
+r12            0x7aa50cb07640      134849301083712
+r13            0x0                 0
+r14            0x7aa50d4947d0      134849311098832
+r15            0x7ffe30d4ccf0      140729717673200
+rip            0x605bb05de959      0x605bb05de959 <riscv_raise_exception+23>
+eflags         0x202               [ IF ]
+cs             0x33                51
+ss             0x2b                43
+ds             0x0                 0
+es             0x0                 0
+--Type <RET> for more, q to quit, c to continue without paging--
+fs             0x0                 0
+gs             0x0                 0
+```
+
+### 1. 调用栈（bt）
+
+```
+#0  riscv_raise_exception (env=0x605bbb9e2110, exception=8, pc=0)
+#1  helper_raise_exception (env=0x605bbb9e2110, exception=8)
+#2  code_gen_buffer ()
+#3  cpu_tb_exec
+#4  cpu_loop_exec_tb
+#5  cpu_exec
+#6  tcg_cpu_exec
+#7  qemu_tcg_cpu_thread_fn
+#8  qemu_thread_start
+#9  start_thread
+#10 clone3
+```
+
+- \#0、#1：你现在正处于QEMU模拟RISC-V异常的核心处理函数（riscv_raise_exception），由helper_raise_exception调用。
+- \#2：code_gen_buffer是QEMU动态翻译生成的指令缓冲区，说明ecall指令被翻译后触发了异常。
+- \#3~#7：QEMU的TCG（Tiny Code Generator）执行主循环，负责模拟CPU指令流。
+- \#8~#10：线程启动相关，属于QEMU和Linux的线程管理。
+
+正处于QEMU模拟RISC-V异常（如ecall）的处理流程中，ecall指令被翻译后，QEMU通过helper_raise_exception和riscv_raise_exception来模拟Trap。
+
+### 2. Trap类型（exception）
+
+```
+p exception
+$1 = 8
+```
+
+RISC-V规范中，exception=8 代表“Environment call from U-mode”，即用户态的ecall（系统调用）。
+
+------
+
+### 3. QEMU内部CPU状态（*env）
+
+你打印了env结构体，里面包含了RISC-V CPU的所有寄存器和CSR状态。常用字段解释如下：
+
+- gpr：通用寄存器（x0~x31）
+- pc：当前指令地址
+- priv：当前特权级（0=U态，1=S态，3=M态）
+- scause、sepc、stvec：S态Trap相关CSR
+- mcause、mepc、mtvec：M态Trap相关CSR
+- misa、mstatus、satp等：RISC-V架构和内存相关CSR
+- badaddr、sbadaddr、mbadaddr：异常相关的地址
+- 其他：浮点、PMP、定时器等
+
+**你可以关注：**
+
+- env->pc：Trap发生时的PC
+- env->priv：Trap发生时的特权级
+- env->scause、env->sepc：Trap类型和返回地址
+- gpr数组：通用寄存器内容
+
+
+
+## 2.sret
+
+##### 第一个终端
+
+```
+make debug
+```
+
+##### 第二个终端
+
+```
+pgrep -f qemu-system-riscv64 
+sudo gdb
+(gdb) attach <刚才查到的PID>
+(gdb) handle SIGPIPE nostop noprint
+(gdb) continue # 之后就启动执行
+```
+
+##### 第三个终端
+
+```
+make gdb
+add-symbol-file obj/__user_exit.out
+b kern/trap/trapentry.S:133
+c
+si直到运行到sret指令
+```
+
+然后我们回到第二个终端，与ecall不同，sret有专门的处理函数
+
+```
+ctrl+C
+b riscv_cpu_do_interrupt//中断
+b riscv_raise_exception//异常
+b helper_sret
+```
+
+然后我们回到第三个中断
+
+```
+si
+```
+
+可以看到
+
+```
+(gdb) c
+Continuing.
+[Switching to Thread 0x7ad28cf07640 (LWP 27642)]
+
+Thread 3 "qemu-system-ris" hit Breakpoint 1, helper_sret (env=0x5b3805fb4110, cpu_pc_deb=18446744072637911114) at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/op_helper.c:76 
+76          if (!(env->priv >= PRV_S)) {     
+```
+
+我们看到sret在他专属的处理函数处停了下来。
+
+我们现在看一下这个函数的具体内容：
+
+**特权级检查**
+
+```
+if (!(env->priv >= PRV_S)) {
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+```
+
+只有S态及以上才能执行sret，否则抛出非法指令异常。
+
+我们来看源码：
+
+```c
+target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
+{
+    if (!(env->priv >= PRV_S)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    target_ulong retpc = env->sepc;
+    if (!riscv_has_ext(env, RVC) && (retpc & 0x3)) {
+        riscv_raise_exception(env, RISCV_EXCP_INST_ADDR_MIS, GETPC());
+    }
+
+    if (env->priv_ver >= PRIV_VERSION_1_10_0 &&
+        get_field(env->mstatus, MSTATUS_TSR)) {
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
+
+    target_ulong mstatus = env->mstatus;
+    target_ulong prev_priv = get_field(mstatus, MSTATUS_SPP);
+    mstatus = set_field(mstatus,
+        env->priv_ver >= PRIV_VERSION_1_10_0 ?
+        MSTATUS_SIE : MSTATUS_UIE << prev_priv,
+        get_field(mstatus, MSTATUS_SPIE));
+    mstatus = set_field(mstatus, MSTATUS_SPIE, 0);
+    mstatus = set_field(mstatus, MSTATUS_SPP, PRV_U);
+    riscv_cpu_set_mode(env, prev_priv);
+    env->mstatus = mstatus;
+
+    return retpc;
+}
+```
+
+**返回地址合法性检查**
+
+```
+target_ulong retpc = env->sepc;
+if (!riscv_has_ext(env, RVC) && (retpc & 0x3)) {
+    riscv_raise_exception(env, RISCV_EXCP_INST_ADDR_MIS, GETPC());
+}
+```
+
+检查返回PC（sepc）是否对齐，是否支持压缩指令。
+
+**特权版本和mstatus检查**
+
+```
+if (env->priv_ver >= PRIV_VERSION_1_10_0 &&
+    get_field(env->mstatus, MSTATUS_TSR)) {
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+```
+
+如果mstatus.TSR被置位，禁止SRET，抛出异常。
+
+**恢复mstatus和特权级**
+
+- 恢复SIE（中断使能）、SPIE、SPP等mstatus字段。
+- 切换到trap前保存的特权级（prev_priv）。
+- 更新mstatus。
+
+**返回trap前的PC**
+
+```
+return retpc;
+```
+
+让CPU跳转回trap前的指令继续执行。
+
+这个函数就是QEMU模拟sret指令的全部硬件行为，确保trap返回时的合法性和状态恢复。如果有任何不合法，直接抛出异常。
+
+同时我们也可以用刚才的一些指令进行分析
+
+```
+(gdb) bt
+#0  riscv_cpu_do_interrupt (cs=0x6052b7f4d700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/cpu_helper.c:507
+#1  0x00006052b71cc523 in riscv_cpu_exec_interrupt ( 
+    cs=0x6052b7f4d700, interrupt_request=2)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/target/riscv/cpu_helper.c:64
+#2  0x00006052b713900d in cpu_handle_interrupt (     
+    cpu=0x6052b7f4d700, last_tb=0x79faf5ffd918)      
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/accel/tcg/cpu-exec.c:580
+#3  0x00006052b713949c in cpu_exec (
+    cpu=0x6052b7f4d700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/accel/tcg/cpu-exec.c:716
+#4  0x00006052b70ebad6 in tcg_cpu_exec (
+    cpu=0x6052b7f4d700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/cpus.c:1435
+#5  0x00006052b70ec38f in qemu_tcg_cpu_thread_fn (
+    arg=0x6052b7f4d700)
+    at /mnt/d/Desktop/OS实验/lab5/qemu-4.1.1/cpus.c:1743
+#6  0x00006052b756e457 in qemu_thread_start (        
+    args=0x6052b7f63de0)
+    at util/qemu-thread-posix.c:502
+#7  0x000079faf8894ac3 in start_thread (
+    arg=<optimized out>)
+    at ./nptl/pthread_create.c:442
+#8  0x000079faf89268c0 in clone3 ()
+    at ../sysdeps/unix/sysv/linux/x86_64/clone3.S:81 
+(gdb) p *cs
+$1 = {parent_obj = {parent_obj = {
+      class = 0x6052b7eea3d0, free = 0x0,
+      Python Exception <class 'gdb.error'>: There is no member named keys.
+properties = 0x6052b7f31ea0, ref = 1,
+      parent = 0x6052b7f4cea8}, id = 0x0, 
+    canonical_path = 0x6052b7f63f90 "/machine/soc/harts[0]", realized = true,
+    pending_deleted_event = false, opts = 0x0, 
+    hotplugged = 0, parent_bus = 0x0, gpios = {      
+      lh_first = 0x0}, child_bus = {
+      lh_first = 0x0}, num_child_bus = 0,
+    instance_id_alias = -1,
+    alias_required_for_version = 0}, nr_cores = 1,   
+  nr_threads = 1, thread = 0x6052b7f63d80,
+  thread_id = 17474, running = true,
+  has_waiter = false, halt_cond = 0x6052b7f63da0,    
+  thread_kicked = false, created = true,
+  stop = false, stopped = false, unplug = false,     
+  crash_occurred = false, exit_request = true,       
+  cflags_next_tb = 4294967295,
+  interrupt_request = 2, singlestep_enabled = 0,     
+  icount_budget = 0, icount_extra = 0,
+  random_seed = 0, jmp_env = {{__jmpbuf = {
+        134118775973440, 1386919516496734684,        
+        134118775973440, 0, 134118818531280,
+        140731878244016, 1386919516542872028,        
+        2337322212554582492}, __mask_was_saved = 0,  
+      __saved_mask = {__val = {
+          0 <repeats 16 times>}}}}, work_mutex = {   
+    lock = {__data = {__lock = 0, __count = 0,       
+        __owner = 0, __nusers = 0, __kind = 0,       
+        __spins = 0, __elision = 0, __list = {       
+          __prev = 0x0, __next = 0x0}},
+      __size = '\000' <repeats 39 times>,
+      __align = 0}, file = 0x0, line = 0,
+    initialized = true}, queued_work_first = 0x0, 
+  queued_work_last = 0x0, 
+  cpu_ases = 0x6052b7f63bf0, num_ases = 1,
+  as = 0x6052b7f63b90, memory = 0x6052b7f28700, 
+  env_ptr = 0x6052b7f56110,
+  icount_decr_ptr = 0x6052b7f56100, tb_jmp_cache = { 
+    0x0 <repeats 4096 times>}, 
+  gdb_regs = 0x6052b7f63b30, gdb_num_regs = 4165,    
+  gdb_num_g_regs = 33, node = {tqe_next = 0x0,       
+--Type <RET> for more, q to quit, c to continue without paging--
+    tqe_circ = {tql_next = 0x0, 
+      tql_prev = 0x6052b7b1a020 <cpus>}},
+  breakpoints = {tqh_first = 0x6052b8103bc0,
+    tqh_circ = {tql_next = 0x6052b8103bc0,
+      tql_prev = 0x6052b80d6a50}}, watchpoints = {   
+    tqh_first = 0x0, tqh_circ = {tql_next = 0x0,     
+      tql_prev = 0x6052b7f55938}},
+  watchpoint_hit = 0x0, opaque = 0x0,
+  mem_io_pc = 134118776064001,
+  mem_io_vaddr = 268435456,
+  mem_io_access_type = MMU_DATA_LOAD, kvm_fd = 0,    
+  kvm_state = 0x0, kvm_run = 0x0, 
+  trace_dstate_delayed = {0}, trace_dstate = {0},    
+  cpu_index = 0, cluster_index = -1, halted = 0,     
+  can_do_io = 1, exception_index = -2147483641, 
+  vcpu_dirty = false,
+  throttle_thread_scheduled = false,
+  ignore_memory_transaction_failures = false,        
+  hax_vcpu = 0x0, hvf_fd = 0, 
+  iommu_notifiers = 0x6052b7ec36f0}
+```
+
+### 1. 结构体身份与基本信息
+
+- `canonical_path = "/machine/soc/harts[0]"`
+  说明这是 QEMU 虚拟机中的第 0 号 hart（RISC-V 的硬件线程/核）。
+- `cpu_index = 0`
+  也是第 0 号 CPU。
+
+### 2. 线程与运行状态
+
+- `thread_id = 17474`
+  当前 QEMU 线程的 Linux 线程号。
+- `running = true`
+  该 CPU/hart 正在运行。
+- `halted = 0`
+  没有暂停。
+
+### 3. 中断与异常
+
+- `interrupt_request = 2`
+  有中断请求（2 通常代表外部中断，具体可查 QEMU 源码）。
+- `exception_index = -2147483641`
+  最近一次异常的编号，负数通常代表特殊状态或无异常。
+
+### 4. 退出与调度
+
+- `exit_request = true`
+  有退出请求，可能是外部事件或模拟器内部请求 CPU 停止。
+
+### 5. 其他
+
+- `env_ptr = 0x6052b7f56110`
+  指向 RISC-V CPU 的寄存器和状态上下文（CPURISCVState）。
+- `can_do_io = 1`
+  允许进行 IO 操作。
+- `breakpoints`、`watchpoints`
+  当前设置的断点和观察点链表。
+
+------
+
+### 你的调试场景
+
+- 你在 `riscv_cpu_do_interrupt` 断下，说明 QEMU 正在处理中断（如定时器、外设等）。
+- `interrupt_request = 2` 表示有中断待处理。
+- 你可以进一步查看 `env_ptr` 指向的 CPURISCVState 结构体，分析寄存器和具体中断原因。
+
+sret 指令本身并不是“要有”中断，而是因为RISC-V规范和QEMU实现都要求：**trap返回（如sret）前必须优先响应挂起的中断**。
+
+## 为什么会调用这个中断呢
+
+### 原因详解
+
+1. **RISC-V规范要求**
+   - sret用于从S态trap handler返回到先前特权级（通常是用户态）。
+   - 但在trap返回前，硬件必须检查是否有更高优先级的中断挂起。
+   - 如果有挂起中断，trap返回会被打断，优先进入中断处理流程。
+2. **QEMU实现**
+   - QEMU每次执行sret时，都会检查pending interrupt。
+   - 如果有pending interrupt，QEMU会先进入中断处理（riscv_cpu_do_interrupt），而不是直接完成sret的trap返回。
+3. **目的**
+   - 这样做是为了保证中断不会被“跳过”，系统响应实时性和优先级调度。
+   - 这是RISC-V硬件和QEMU模拟器都必须遵守的trap和中断优先级机制。
+
+### 总结
+
+sret不是“要有”中断，而是trap返回时如果有中断挂起，必须优先处理中断。这是RISC-V架构的规范要求，也是QEMU正确模拟硬件行为的体现。
