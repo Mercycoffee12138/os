@@ -1,0 +1,8 @@
+priority:                (2.7s)
+  -check result:                             WRONG
+   -e !! error: missing 'all user-mode processes have quit.'
+   !! error: missing 'init check memory pass.'
+
+  -check output:                             OK
+Total Score: 10/50
+make: *** [Makefile:266: grade] Error 1

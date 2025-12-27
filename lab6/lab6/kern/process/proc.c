@@ -133,7 +133,7 @@ alloc_proc(void)
         proc->cptr = proc->yptr = proc->optr = NULL; // 进程关系指针初始化为NULL
 
 
-        // LAB6:YOUR CODE (update LAB5 steps)
+        // LAB6:2310137 (update LAB5 steps)
         /*
          * below fields(add in LAB6) in proc_struct need to be initialized
          *       struct run_queue *rq;                       // run queue contains Process
@@ -143,6 +143,14 @@ alloc_proc(void)
          *       uint32_t lab6_stride;                       // stride value (lab6 stride)
          *       uint32_t lab6_priority;                     // priority value (lab6 stride)
          */
+        proc->rq = NULL;                  // 运行队列指针
+        list_init(&proc->run_link);       // 初始化运行链表项
+        proc->time_slice = 0;             // 时间片初始化为0
+        proc->lab6_run_pool.left = NULL;  // Stride堆池左孩子
+        proc->lab6_run_pool.right = NULL; // Stride堆池右孩子
+        proc->lab6_run_pool.parent = NULL; // Stride堆池父节点
+        proc->lab6_stride = 0;            // Stride值初始化为0
+        proc->lab6_priority = 0;          // 优先级初始化为0
     }
     return proc;
 }
@@ -978,7 +986,8 @@ init_main(void *arg)
         panic("create user_main failed.\n");
     }
 
-    while (do_wait(0, NULL) == 0)
+    int wait_result;
+    while ((wait_result = do_wait(0, NULL)) == 0)
     {
         schedule();
     }

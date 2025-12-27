@@ -19,6 +19,8 @@
 
 #define TICK_NUM 100
 
+static unsigned long num = 0;  // LAB3: 打印次数计数器
+
 static void print_ticks()
 {
     cprintf("%d ticks\n", TICK_NUM);
@@ -133,13 +135,19 @@ void interrupt_handler(struct trapframe *tf)
         if (++ticks % TICK_NUM == 0) {
             print_ticks();
             num++; // 打印次数加一
-            if (num == 10) {
+            if (num == 30) {
                 sbi_shutdown(); // 关机
+            }
+            if(current != NULL && (tf->status & SSTATUS_SPP) == 0) {
+                current->need_resched = 1;
             }
         }
 
-        // lab6: YOUR CODE  (update LAB3 steps)
+        // lab6: 2310137  (update LAB3 steps)
         //  在时钟中断时调用调度器的 sched_class_proc_tick 函数
+        if (current != NULL) {
+            sched_class_proc_tick(current);
+        }
 
 
 
