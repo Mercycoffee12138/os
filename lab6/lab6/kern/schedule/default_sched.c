@@ -18,6 +18,8 @@ static void
 RR_init(struct run_queue *rq)
 {
     // LAB6: 2310137
+    // (1) 初始化rq->run_list为空链表
+    // (2) 设置rq->proc_num为0
     list_init(&(rq->run_list));
     rq->proc_num = 0;
 }
@@ -37,11 +39,17 @@ static void
 RR_enqueue(struct run_queue *rq, struct proc_struct *proc)
 {
     // LAB6: 2310137
+    // (1) 将进程的run_link插入到运行队列rq的队尾（使用list_add_before）
+    // (2) 设置进程的rq指针指向当前运行队列
+    // (3) 增加rq的proc_num计数
+    // (4) 如果进程的时间片为0或超过最大值，重置为max_time_slice
     assert(list_empty(&(proc->run_link)));
     list_add_before(&(rq->run_list), &(proc->run_link));
     proc->rq = rq;
-    rq->proc_num ++;
-    proc->time_slice = rq->max_time_slice;
+    rq->proc_num++;
+    if (proc->time_slice == 0 || proc->time_slice > rq->max_time_slice) {
+        proc->time_slice = rq->max_time_slice;
+    }
 }
 
 /*
@@ -55,10 +63,14 @@ static void
 RR_dequeue(struct run_queue *rq, struct proc_struct *proc)
 {
     // LAB6: 2310137
+    // (1) 断言进程的run_link不为空（即进程在队列中）
+    // (2) 使用list_del_init将进程从队列中删除并重新初始化run_link
+    // (3) 清空进程的rq指针
+    // (4) 减少rq的proc_num计数
     assert(!list_empty(&(proc->run_link)));
     list_del_init(&(proc->run_link));
     proc->rq = NULL;
-    rq->proc_num --;
+    rq->proc_num--;
 }
 
 /*
@@ -73,6 +85,9 @@ static struct proc_struct *
 RR_pick_next(struct run_queue *rq)
 {
     // LAB6: 2310137
+    // (1) 如果运行队列为空，返回NULL
+    // (2) 否则获取队列头部的进程（list_next获取run_list的下一个节点）
+    // (3) 使用le2proc宏将list_entry转换为proc_struct指针
     if (list_empty(&(rq->run_list))) {
         return NULL;
     }
@@ -91,8 +106,10 @@ static void
 RR_proc_tick(struct run_queue *rq, struct proc_struct *proc)
 {
     // LAB6: 2310137
+    // (1) 如果进程的时间片time_slice大于0，则递减
+    // (2) 如果时间片减到0，设置need_resched为1，表示需要重新调度
     if (proc->time_slice > 0) {
-        proc->time_slice --;
+        proc->time_slice--;
     }
     if (proc->time_slice == 0) {
         proc->need_resched = 1;
