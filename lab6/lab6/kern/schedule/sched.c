@@ -6,6 +6,17 @@
 #include <assert.h>
 #include <default_sched.h>
 
+/*
+ * LAB6 CHALLENGE 2: 调度算法选择
+ * 通过修改SCHED_ALGORITHM宏来切换不同的调度算法
+ * 可选值：
+ *   0 - RR (Round Robin) 时间片轮转
+ *   1 - Stride 步进调度
+ *   2 - FIFO 先来先服务
+ *   3 - Priority 优先级调度
+ */
+#define SCHED_ALGORITHM 0  // 默认使用Stride调度器
+
 // the list of timer
 static list_entry_t timer_list;
 
@@ -52,7 +63,18 @@ void sched_init(void)
 {
     list_init(&timer_list);
 
-    sched_class = &default_sched_class;
+    // LAB6 CHALLENGE 2: 根据SCHED_ALGORITHM选择调度算法
+#if SCHED_ALGORITHM == 0
+    sched_class = &default_sched_class;     // RR调度器
+#elif SCHED_ALGORITHM == 1
+    sched_class = &stride_sched_class;      // Stride调度器
+#elif SCHED_ALGORITHM == 2
+    sched_class = &FIFO_sched_class;        // FIFO调度器
+#elif SCHED_ALGORITHM == 3
+    sched_class = &priority_sched_class;    // 优先级调度器
+#else
+    sched_class = &default_sched_class;     // 默认使用RR
+#endif
 
     rq = &__rq;
     rq->max_time_slice = MAX_TIME_SLICE;

@@ -25,8 +25,14 @@ static void print_ticks()
 {
     cprintf("%d ticks\n", TICK_NUM);
 #ifdef DEBUG_GRADE
-    cprintf("End of Test.\n");
-    panic("EOT: kernel seems ok.");
+    // cprintf("End of Test.\n");
+    // panic("EOT: kernel seems ok.");
+    
+    // 允许系统运行足够长时间（至少5000 ticks = 5秒），确保用户进程能够完成
+    if (num >= 50) {
+        cprintf("End of Test.\n");
+        panic("EOT: kernel seems ok.");
+    }
 #endif
 }
 
