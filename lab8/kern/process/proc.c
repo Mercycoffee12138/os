@@ -126,7 +126,7 @@ alloc_proc(void)
          *       uint32_t lab6_priority;                     // priority value (lab6 stride)
          */
 
-        //LAB8 YOUR CODE : (update LAB6 steps)
+        //LAB8 2311082 : (update LAB6 steps)
         /*
          * below fields(add in LAB6) in proc_struct need to be initialized
          *       struct files_struct * filesp;                file struct point        
@@ -152,8 +152,9 @@ alloc_proc(void)
         proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
         proc->lab6_stride = 0;
         proc->lab6_priority = 0;
+        proc->filesp = NULL;
 
-        
+
     }
     return proc;
 }
@@ -283,18 +284,19 @@ void proc_run(struct proc_struct *proc)
             struct proc_struct *prev = current;
             current = proc;
             lsatp(proc->pgdir);
+            flush_tlb();  // LAB8: flush TLB after changing page table
             switch_to(&(prev->context), &(proc->context));
         }
         local_intr_restore(intr_flag);
     }
-    //LAB8 YOUR CODE : (update LAB4 steps)
+    //LAB8 2311082 : (update LAB4 steps)
       /*
        * below fields(add in LAB6) in proc_struct need to be initialized
        *       before switch_to();you should flush the tlb
        *        MACROs or Functions:
-       *       flush_tlb():          flush the tlb        
+       *       flush_tlb():          flush the tlb
        */
-    
+
 }
 
 // forkret -- the first kernel entry point of a new thread/process
@@ -521,12 +523,13 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
 {
     int ret = -E_NO_FREE_PROC;
     struct proc_struct *proc;
+
     if (nr_process >= MAX_PROCESS)
     {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    // LAB8:EXERCISE2 YOUR CODE  HINT:how to copy the fs in parent's proc_struct?
+    // LAB8:EXERCISE2 2311082  HINT:how to copy the fs in parent's proc_struct?
     // LAB4:填写你在lab4中实现的代码
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
@@ -575,27 +578,32 @@ int do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf)
         goto bad_fork_cleanup_proc;
     }
 
+    if ((ret = copy_files(clone_flags, proc)) != 0)
+    { // for LAB8
+        goto bad_fork_cleanup_kstack;
+    }
+
     if ((ret = copy_mm(clone_flags, proc)) != 0)
     {
-        goto bad_fork_cleanup_kstack;
+        goto bad_fork_cleanup_fs;
     }
 
     copy_thread(proc, stack, tf);
 
-    proc->pid = get_pid();
-    hash_proc(proc);
-    // LAB5: 使用set_links来设置进程关系链表
-    set_links(proc);
+    bool intr_flag;
+    local_intr_save(intr_flag);
+    {
+        proc->pid = get_pid();
+        hash_proc(proc);
+        // LAB5: 使用set_links来设置进程关系链表
+        set_links(proc);
+    }
+    local_intr_restore(intr_flag);
 
     wakeup_proc(proc);
 
     ret = proc->pid;
-    
-    if (copy_files(clone_flags, proc) != 0)
-    { // for LAB8
-        goto bad_fork_cleanup_kstack;
-    }
-    
+
 fork_out:
     return ret;
 
@@ -693,7 +701,7 @@ load_icode_read(int fd, void *buf, size_t len, off_t offset)
 static int
 load_icode(int fd, int argc, char **kargv)
 {
-    /* LAB8:EXERCISE2 YOUR CODE  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
+    /* LAB8:EXERCISE2 2311082  HINT:how to load the file with handler fd  in to process's memory? how to setup argc/argv?
      * MACROs or Functions:
      *  mm_create        - create a mm
      *  setup_pgdir      - setup pgdir in mm
@@ -702,7 +710,7 @@ load_icode(int fd, int argc, char **kargv)
      *  pgdir_alloc_page - allocate new memory for  TEXT/DATA/BSS/stack parts
      *  lsatp             - update Page Directory Addr Register -- CR3
      */
-    //You can Follow the code form LAB5 which you have completed  to complete 
+    //You can Follow the code form LAB5 which you have completed  to complete
     /* (1) create a new mm for current process
      * (2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
      * (3) copy TEXT/DATA/BSS parts in binary to memory space of process
@@ -718,7 +726,234 @@ load_icode(int fd, int argc, char **kargv)
      * (7) setup trapframe for user environment
      * (8) if up steps failed, you should cleanup the env.
      */
-    
+
+    int ret = -E_NO_MEM;
+    struct mm_struct *mm;
+
+    // (1) create a new mm for current process
+    if ((mm = mm_create()) == NULL) {
+        goto bad_mm;
+    }
+
+    // (2) create a new PDT, and mm->pgdir = kernel virtual addr of PDT
+    if (setup_pgdir(mm) != 0) {
+        goto bad_pgdir_cleanup_mm;
+    }
+
+    // (3) copy TEXT/DATA/BSS parts in binary to memory space of process
+    struct Page *page;
+    // (3.1) read raw data content in file and resolve elfhdr
+    struct elfhdr elf_buf;
+    struct elfhdr *elf = &elf_buf;
+    if ((ret = load_icode_read(fd, elf, sizeof(struct elfhdr), 0)) != 0) {
+        goto bad_pgdir_cleanup_mm;
+    }
+
+    // (3.2) read raw data content in file and resolve proghdr
+    if (elf->e_magic != ELF_MAGIC) {
+        ret = -E_INVAL_ELF;
+        goto bad_pgdir_cleanup_mm;
+    }
+
+    struct proghdr *ph_orig = (struct proghdr *)kmalloc(sizeof(struct proghdr) * elf->e_phnum);
+    if (ph_orig == NULL) {
+        goto bad_pgdir_cleanup_mm;
+    }
+    if ((ret = load_icode_read(fd, ph_orig, sizeof(struct proghdr) * elf->e_phnum, elf->e_phoff)) != 0) {
+        goto bad_ph_cleanup_pgdir;
+    }
+
+    // (3.3) call mm_map to build vma related to TEXT/DATA
+    // (3.4) and (3.5) alloc memory and copy/memset content
+    uint32_t vm_flags, perm;
+    struct proghdr *ph = ph_orig;
+    struct proghdr *ph_end = ph_orig + elf->e_phnum;
+    for (; ph < ph_end; ph++) {
+        if (ph->p_type != ELF_PT_LOAD) {
+            continue;
+        }
+        if (ph->p_filesz > ph->p_memsz) {
+            ret = -E_INVAL_ELF;
+            goto bad_cleanup_mmap;
+        }
+
+        // setup vm_flags and perm
+        vm_flags = 0;
+        perm = PTE_U | PTE_V;
+        if (ph->p_flags & ELF_PF_X)
+            vm_flags |= VM_EXEC;
+        if (ph->p_flags & ELF_PF_W)
+            vm_flags |= VM_WRITE;
+        if (ph->p_flags & ELF_PF_R)
+            vm_flags |= VM_READ;
+
+        // modify the perm bits for RISC-V
+        if (vm_flags & VM_READ)
+            perm |= PTE_R;
+        if (vm_flags & VM_WRITE)
+            perm |= (PTE_W | PTE_R);
+        if (vm_flags & VM_EXEC)
+            perm |= PTE_X;
+
+        if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
+            goto bad_cleanup_mmap;
+        }
+
+        unsigned char *from = (unsigned char *)kmalloc(ph->p_filesz);
+        if (from == NULL) {
+            goto bad_cleanup_mmap;
+        }
+        if ((ret = load_icode_read(fd, from, ph->p_filesz, ph->p_offset)) != 0) {
+            kfree(from);
+            goto bad_cleanup_mmap;
+        }
+
+        size_t off, size;
+        uintptr_t start = ph->p_va, end, la = ROUNDDOWN(start, PGSIZE);
+
+        // (3.4) alloc memory and copy TEXT/DATA section
+        end = ph->p_va + ph->p_filesz;
+        while (start < end) {
+            if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+                kfree(from);
+                goto bad_cleanup_mmap;
+            }
+            off = start - la;
+            size = PGSIZE - off;
+            la += PGSIZE;
+            if (end < la) {
+                size -= la - end;
+            }
+            memcpy(page2kva(page) + off, from + (start - ph->p_va), size);
+            start += size;
+        }
+
+        // (3.5) alloc memory and memset BSS section
+        end = ph->p_va + ph->p_memsz;
+        if (start < la) {
+            if (start == end) {
+                kfree(from);
+                continue;
+            }
+            off = start + PGSIZE - la;
+            size = PGSIZE - off;
+            if (end < la) {
+                size -= la - end;
+            }
+            memset(page2kva(page) + off, 0, size);
+            start += size;
+            assert((end < la && start == end) || (end >= la && start == la));
+        }
+        while (start < end) {
+            if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
+                kfree(from);
+                goto bad_cleanup_mmap;
+            }
+            off = start - la;
+            size = PGSIZE - off;
+            la += PGSIZE;
+            if (end < la) {
+                size -= la - end;
+            }
+            memset(page2kva(page) + off, 0, size);
+            start += size;
+        }
+
+        kfree(from);
+    }
+
+    kfree(ph_orig);
+
+    // (4) call mm_map to setup user stack
+    vm_flags = VM_READ | VM_WRITE | VM_STACK;
+    if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
+        goto bad_cleanup_mmap;
+    }
+
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - PGSIZE, PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 2 * PGSIZE, PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 3 * PGSIZE, PTE_USER) != NULL);
+    assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 4 * PGSIZE, PTE_USER) != NULL);
+
+    // (6) 在用户栈中设置argc和argv
+    uint32_t argv_size = 0, i;
+    for (i = 0; i < argc; i++) {
+        argv_size += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
+    }
+
+
+    uintptr_t stacktop = USTACKTOP - (argv_size / sizeof(long) + 1) * sizeof(long);
+
+    char **uargv = (char **)(stacktop - argc * sizeof(char *));
+
+    // 设置字符串和argv数组
+    argv_size = 0;
+    for (i = 0; i < argc; i++) {
+        // 找到字符串地址对应的内核虚拟地址
+        uintptr_t str_addr = stacktop + argv_size;
+        pte_t *pte = get_pte(mm->pgdir, str_addr, 0);
+        if (pte == NULL || !(*pte & PTE_V)) {
+            ret = -E_INVAL;
+            goto bad_cleanup_mmap;
+        }
+        void *kva_str = page2kva(pte2page(*pte)) + (str_addr & (PGSIZE - 1));
+
+        strcpy((char *)kva_str, kargv[i]);
+
+        // 设置uargv[i]指向字符串
+        uintptr_t argv_addr = (uintptr_t)&uargv[i];
+        pte = get_pte(mm->pgdir, argv_addr, 0);
+        if (pte == NULL || !(*pte & PTE_V)) {
+            ret = -E_INVAL;
+            goto bad_cleanup_mmap;
+        }
+        void *kva_argv = page2kva(pte2page(*pte)) + (argv_addr & (PGSIZE - 1));
+        *(char **)kva_argv = (char *)str_addr;
+
+        argv_size += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
+    }
+
+    stacktop = (uintptr_t)uargv - sizeof(int);
+
+    // 设置argc
+    pte_t *pte = get_pte(mm->pgdir, stacktop, 0);
+    if (pte == NULL || !(*pte & PTE_V)) {
+        ret = -E_INVAL;
+        goto bad_cleanup_mmap;
+    }
+    void *kva_argc = page2kva(pte2page(*pte)) + (stacktop & (PGSIZE - 1));
+    *(int *)kva_argc = argc;
+
+
+    // (5) setup current process's mm, pgdir
+    mm_count_inc(mm);
+    current->mm = mm;
+    current->pgdir = PADDR(mm->pgdir);
+    lsatp(PADDR(mm->pgdir));
+
+    // (7) setup trapframe for user environment
+    struct trapframe *tf = current->tf;
+    uintptr_t sstatus = tf->status;
+    memset(tf, 0, sizeof(struct trapframe));
+    tf->gpr.sp = stacktop;
+    tf->epc = elf->e_entry;
+    tf->status = sstatus & ~(SSTATUS_SPP | SSTATUS_SPIE);
+
+
+    ret = 0;
+
+out:
+    return ret;
+
+bad_cleanup_mmap:
+    exit_mmap(mm);
+bad_ph_cleanup_pgdir:
+    kfree(ph_orig);
+bad_pgdir_cleanup_mm:
+    put_pgdir(mm);
+    mm_destroy(mm);
+bad_mm:
+    return ret;
 }
 
 // this function isn't very correct in LAB8
@@ -768,6 +1003,7 @@ int do_execve(const char *name, int argc, const char **argv)
 {
     static_assert(EXEC_MAX_ARG_LEN >= FS_MAX_FPATH_LEN);
     struct mm_struct *mm = current->mm;
+
     if (!(argc >= 1 && argc <= EXEC_MAX_ARG_NUM))
     {
         return -E_INVAL;
@@ -826,6 +1062,7 @@ int do_execve(const char *name, int argc, const char **argv)
     {
         goto execve_exit;
     }
+    sysfile_close(fd);  // 关闭打开的ELF文件
     put_kargv(argc, kargv);
     set_proc_name(current, local_name);
     return 0;
