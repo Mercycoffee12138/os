@@ -2,6 +2,46 @@
 
 ## 练习1：完成读文件操作的实现
 
+### 调用链分析：从 read 到 sfs_io_nolock
+
+文件读操作的完整调用链如下：
+
+1. **用户态**：
+   - `read(fd, data, len)` 用户进程发起读请求。
+   - 实际调用 `sys_read(fd, data, len)` 进入内核。
+
+2. **系统调用/文件系统抽象层**：
+   - `sys_read` 解析参数，调用 `sysfile_read(fd, base, len)`。
+   - `sysfile_read` 检查参数、分配内核 buffer，循环调用 `file_read` 读取数据。
+   - `file_read` 通过 `fd2file` 获取文件结构体，初始化 iobuf，调用 `vop_read(file->node, iob)`。
+
+3. **VFS 层**：
+   - `vop_read` 是一个宏，实际会调用具体文件系统的 `inode_ops->vop_read`，对于 SFS 文件系统就是 `sfs_read`。
+
+4. **SFS 文件系统层**：
+   - `sfs_read` 调用 `sfs_io(node, iob, 0)`，加锁后调用 `sfs_io_nolock` 完成实际读操作。
+   - `sfs_io_nolock` 负责分块处理数据，最终通过 `sfs_bmap_load_nolock`、`sfs_rbuf`、`sfs_rblock` 等函数实现磁盘到内存的数据传输。
+
+**简要流程图：**
+
+```
+read
+  ↓
+sys_read
+  ↓
+sysfile_read
+  ↓
+file_read
+  ↓
+vop_read (→ sfs_read)
+  ↓
+sfs_io
+  ↓
+sfs_io_nolock
+```
+
+这样，用户的 read 请求最终会通过多层抽象，落到 SFS 文件系统的 sfs_io_nolock 函数，完成实际的文件数据读取。
+
 ### 原理分析
 
 在基于文件系统的操作系统中，文件读操作是一个核心功能。`sfs_io_nolock()` 函数实现了对Simple File System (SFS)中文件内容的读写操作。该函数的核心作用是将磁盘块中的数据与内存中的缓冲区进行交互。
