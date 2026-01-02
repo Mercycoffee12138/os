@@ -1,5 +1,29 @@
 # Lab8 实验报告
 
+## 练习0：填写/整合已有实验代码
+
+本实验依赖 Lab2/3/4/5/6/7，需要把前序实验中标注为 `LAB2`/`LAB3`/`LAB4`/`LAB5`/`LAB6`/`LAB7` 的代码补齐并保证能够编译通过。
+
+本报告中不再逐段展开粘贴前序实验的全部实现（避免与 Lab2~Lab7 报告重复），仅说明为了让 Lab8 的用户程序与测试能够正确运行，本人对“整合代码”做了如下与 Lab8 强相关的检查/补全：
+
+- **进程切换与页表切换正确性**：在 `proc_run()` 中切换 `satp` 后刷新 TLB：
+
+  （函数：`proc_run()`）
+
+  ```c
+  lsatp(proc->pgdir);
+  flush_tlb();  // LAB8: flush TLB after changing page table
+  ```
+- **文件表结构接入（filesp）**：在 `alloc_proc()` 中初始化 `filesp` 字段：
+
+  （函数：`alloc_proc()`）
+
+  ```c
+  proc->filesp = NULL;
+  ```
+
+以上内容属于“练习0”的整合性工作：保证前序实验代码在 Lab8 环境下可用，并满足测试程序对进程/文件系统行为的依赖。
+
 ## 练习1：完成读文件操作的实现
 
 ### 调用链分析：从 read 到 sfs_io_nolock
@@ -14,7 +38,7 @@
 
    - `sys_read` 解析参数，调用 `sysfile_read(fd, base, len)`。
    - `sysfile_read` 检查参数、分配内核 buffer，循环调用 `file_read` 读取数据。
-   - `file_read` 通过 `fd2file` 获取文件结构体，初始化 iobuf，调用 `vop_read(file->node, iob)`。
+   - `file_read` 通过 `fd2file` 获取文件结构体，初始化 iobuf，调用 `vop_read(file->node, iob)`
 3. **VFS 层**：
 
    - `vop_read` 是一个宏，实际会调用具体文件系统的 `inode_ops->vop_read`，对于 SFS 文件系统就是 `sfs_read`。
@@ -217,10 +241,135 @@ if ((ret = load_icode_read(fd, from, ph->p_filesz, ph->p_offset)) != 0) {
 }
 ```
 
+**(4) 建立用户栈 VMA 并预分配栈页**
+
+完成各个程序段映射后，需要为用户态栈建立虚拟内存区域（VMA）。本实现先用 `mm_map()` 在 `[USTACKTOP-USTACKSIZE, USTACKTOP)` 建立栈区映射，再额外在栈顶“预分配”4页物理内存，避免用户程序刚启动时因缺页而触发异常（也便于后续往栈上写入参数）。
+
+```c
+vm_flags = VM_READ | VM_WRITE | VM_STACK;
+if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
+    goto bad_cleanup_mmap;
+}
+
+assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - PGSIZE, PTE_USER) != NULL);
+assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 2 * PGSIZE, PTE_USER) != NULL);
+assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 3 * PGSIZE, PTE_USER) != NULL);
+assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 4 * PGSIZE, PTE_USER) != NULL);
+```
+
+**(6) 在用户栈上构造 argc/argv 与参数字符串**
+
+`argv` 的本质是“指针数组”，每个 `argv[i]` 都指向一个以 `\0` 结尾的参数字符串。实现时需要把“参数字符串内容”与“argv指针数组本身”都写入用户栈。
+
+1）先统计所有参数字符串总长度（每个字符串都要包含末尾 `\0`）：
+
+```c
+uint32_t argv_size = 0, i;
+for (i = 0; i < argc; i++) {
+  argv_size += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
+}
+```
+
+2）计算在用户栈上的放置位置。
+
+- `stacktop`：参数字符串区起始地址（靠近 `USTACKTOP` 的高地址处）
+- `uargv`：argv 指针数组起始地址（位于参数字符串区“下方”的更低地址处）
+
+```c
+uintptr_t stacktop = USTACKTOP - (argv_size / sizeof(long) + 1) * sizeof(long);
+char **uargv = (char **)(stacktop - argc * sizeof(char *));
+```
+
+这里用 `sizeof(long)` 做了一个简单的对齐（避免栈上数据出现“奇怪的未对齐”）。
+
+3）把每个参数字符串拷贝到用户栈，并在 `uargv[i]` 中写入该字符串的用户态虚拟地址。
+
+因为内核态不能直接用用户态虚拟地址当作普通指针去写，所以代码通过 `get_pte()` 找到对应页表项，再把“用户虚拟地址”转换成“内核可访问的 kva”，最后 `strcpy/写指针`。
+
+```c
+argv_size = 0;
+for (i = 0; i < argc; i++) {
+  uintptr_t str_addr = stacktop + argv_size;
+  pte_t *pte = get_pte(mm->pgdir, str_addr, 0);
+  void *kva_str = page2kva(pte2page(*pte)) + (str_addr & (PGSIZE - 1));
+  strcpy((char *)kva_str, kargv[i]);
+
+  uintptr_t argv_addr = (uintptr_t)&uargv[i];
+  pte = get_pte(mm->pgdir, argv_addr, 0);
+  void *kva_argv = page2kva(pte2page(*pte)) + (argv_addr & (PGSIZE - 1));
+  *(char **)kva_argv = (char *)str_addr;
+
+  argv_size += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
+}
+```
+
+4）最后把 `argc` 写到 `uargv` 下方，并让最终用户态栈指针 `sp` 指向 `argc` 的位置：
+
+```c
+stacktop = (uintptr_t)uargv - sizeof(int);
+pte_t *pte = get_pte(mm->pgdir, stacktop, 0);
+void *kva_argc = page2kva(pte2page(*pte)) + (stacktop & (PGSIZE - 1));
+*(int *)kva_argc = argc;
+```
+
+因此，本实现中用户栈从高地址到低地址的布局可概括为：
+
+```
+高地址  USTACKTOP
+  |  参数字符串区（连续的“xxx\0yyy\0...”）
+  |  argv 指针数组（char* argv[argc]，每项指向上面的字符串）
+  |  argc（int）  <- sp 最终指向这里
+低地址
+```
+
+**(5) 安装新的 mm/pgdir 并切换到该进程页表**
+
+完成映射与用户栈内容写入后，把新建的 `mm` 挂到 `current` 上，并把硬件页表寄存器切换到该进程的页目录：
+
+```c
+mm_count_inc(mm);
+current->mm = mm;
+current->pgdir = PADDR(mm->pgdir);
+lsatp(PADDR(mm->pgdir));
+```
+
+这里 `lsatp(...)` 的效果是让 CPU 后续的地址翻译使用新页表，从而真正“进入”新程序的地址空间。
+
+**(7) 设置 trapframe：sp/epc/status**
+
+`trapframe` 是内核在“返回用户态”时用来恢复寄存器现场的数据结构。`exec` 的语义是“用新程序替换当前进程”，因此需要重置 trapframe，让用户态从新入口开始执行。
+
+```c
+struct trapframe *tf = current->tf;
+uintptr_t sstatus = tf->status;
+memset(tf, 0, sizeof(struct trapframe));
+tf->gpr.sp = stacktop;       // 用户栈指针，指向 argc
+tf->epc = elf->e_entry;      // 用户程序入口（ELF e_entry）
+tf->status = sstatus & ~(SSTATUS_SPP | SSTATUS_SPIE);
+```
+
+其中 `tf->epc = elf->e_entry` 会在“从内核返回用户态”的那一刻生效：trap 返回路径会用 trapframe 恢复寄存器，并把 `epc` 装载为下一条要执行的用户态 PC，从而跳到用户程序入口。
+
+### 调用链补充：epc 如何真正让用户程序跑起来
+
+在本实验中，`load_icode()` 设置 `tf->epc` 后，后续关键链路可概括为：
+
+```
+用户态 execve
+  -> sys_exec
+  -> do_execve
+  -> load_icode (设置 pgdir + 用户栈 + tf->sp/tf->epc)
+  -> 系统调用返回路径（trap return）
+  -> 根据 trapframe 恢复寄存器并跳转到 tf->epc
+  -> 从 elf->e_entry 开始执行新用户程序
+```
+
 ### 调用链
 
 - `do_execve()` → `load_icode(fd, argc, kargv)` → `load_icode_read()` → `sysfile_seek()`/`sysfile_read()`
 - 最终通过VFS接口调用到 `sfs_io_nolock()` 进行实际的磁盘I/O操作
+
+补充说明：除 `execve` 的装载链路外，进程在运行过程中发生切换时（`proc_run()` 切换页表）需要 `flush_tlb()` 配合，确保切换到新的地址空间后 TLB 不残留旧映射。
 
 ### 验证成功
 

@@ -730,90 +730,107 @@ load_icode(int fd, int argc, char **kargv)
     int ret = -E_NO_MEM;
     struct mm_struct *mm;
 
-    // (1) create a new mm for current process
+    // (1) 给当前进程创建要给新的内存管理结构体mm
     if ((mm = mm_create()) == NULL) {
         goto bad_mm;
     }
 
-    // (2) create a new PDT, and mm->pgdir = kernel virtual addr of PDT
+    // (2) 创建一个页目录表
     if (setup_pgdir(mm) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
 
     // (3) copy TEXT/DATA/BSS parts in binary to memory space of process
+    //声明一个页指针用于分配和操作物理页
     struct Page *page;
-    // (3.1) read raw data content in file and resolve elfhdr
+    // 声明一个elf文件头结构体，然后从fd指向的elf文件中把文件头读出来
     struct elfhdr elf_buf;
     struct elfhdr *elf = &elf_buf;
     if ((ret = load_icode_read(fd, elf, sizeof(struct elfhdr), 0)) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
 
-    // (3.2) read raw data content in file and resolve proghdr
+    // 判断魔数对不对（避免乐队惨案）
     if (elf->e_magic != ELF_MAGIC) {
         ret = -E_INVAL_ELF;
         goto bad_pgdir_cleanup_mm;
     }
 
+    //申请elf文件头中记录的程序头数量的程序头结构体内存、
+    //程序头（Program Header）记录的是程序中一个段（如代码段、数据段等）的各种属性信息
     struct proghdr *ph_orig = (struct proghdr *)kmalloc(sizeof(struct proghdr) * elf->e_phnum);
     if (ph_orig == NULL) {
         goto bad_pgdir_cleanup_mm;
     }
+    //读取elf文件中所有的程序头内容。偏移量是 elf->e_phoff（即程序头表在文件中的起始位置）
     if ((ret = load_icode_read(fd, ph_orig, sizeof(struct proghdr) * elf->e_phnum, elf->e_phoff)) != 0) {
         goto bad_ph_cleanup_pgdir;
     }
 
-    // (3.3) call mm_map to build vma related to TEXT/DATA
-    // (3.4) and (3.5) alloc memory and copy/memset content
+    //虚拟内存区的权限和页表项的权限
     uint32_t vm_flags, perm;
+    //ph 指向第一个程序头（Program Header）。
+    //ph_end 指向最后一个程序头的下一个位置
     struct proghdr *ph = ph_orig;
     struct proghdr *ph_end = ph_orig + elf->e_phnum;
+    //遍历所有程序头，每次循环处理一个段的加载
     for (; ph < ph_end; ph++) {
+        //判断当前程序头的类型是否为可加载段，只处理可加载段
         if (ph->p_type != ELF_PT_LOAD) {
             continue;
         }
+        //检查文件中该段的实际大小是否大于内存中该段的大小，判断elf文件是否有问题
         if (ph->p_filesz > ph->p_memsz) {
             ret = -E_INVAL_ELF;
             goto bad_cleanup_mmap;
         }
 
-        // setup vm_flags and perm
+        // 内存区域标志为0
         vm_flags = 0;
+        //页表项权限初始化，PTE_U 表示用户可访问，PTE_V 表示该页有效。
         perm = PTE_U | PTE_V;
+        //根据程序头的 p_flags 字段，设置虚拟内存区域的属性
+        //可执行
         if (ph->p_flags & ELF_PF_X)
             vm_flags |= VM_EXEC;
         if (ph->p_flags & ELF_PF_W)
-            vm_flags |= VM_WRITE;
+            vm_flags |= VM_WRITE;//可写
         if (ph->p_flags & ELF_PF_R)
-            vm_flags |= VM_READ;
+            vm_flags |= VM_READ;//可读
 
-        // modify the perm bits for RISC-V
+        // 设置页表项权限
         if (vm_flags & VM_READ)
-            perm |= PTE_R;
+            perm |= PTE_R;//可读
         if (vm_flags & VM_WRITE)
-            perm |= (PTE_W | PTE_R);
+            perm |= (PTE_W | PTE_R);//可写（加上读写权限）
         if (vm_flags & VM_EXEC)
-            perm |= PTE_X;
+            perm |= PTE_X;//可执行
 
+        //在进程虚拟内存空间中为该段建立一个虚拟内存区域
+        //起始，长度，属性
         if ((ret = mm_map(mm, ph->p_va, ph->p_memsz, vm_flags, NULL)) != 0) {
             goto bad_cleanup_mmap;
         }
 
+        //申请内存临时存放elf文件中读取的该段内容，设置为from指向
         unsigned char *from = (unsigned char *)kmalloc(ph->p_filesz);
         if (from == NULL) {
             goto bad_cleanup_mmap;
         }
+        //真正从elf中读取该段内容存入方才申请的内存
         if ((ret = load_icode_read(fd, from, ph->p_filesz, ph->p_offset)) != 0) {
             kfree(from);
             goto bad_cleanup_mmap;
         }
 
         size_t off, size;
-        uintptr_t start = ph->p_va, end, la = ROUNDDOWN(start, PGSIZE);
+        uintptr_t start = ph->p_va, end, la = ROUNDDOWN(start, PGSIZE);//设置虚拟地址空间的起点地址，la设置为start向下对齐
 
         // (3.4) alloc memory and copy TEXT/DATA section
         end = ph->p_va + ph->p_filesz;
+        //从from中把那段内容以页为单位拷贝过去拷贝到虚拟地址空间中
         while (start < end) {
+            //页目录中分配一个虚拟地址为la，权限为perm的物理页
             if ((page = pgdir_alloc_page(mm->pgdir, la, perm)) == NULL) {
                 kfree(from);
                 goto bad_cleanup_mmap;
@@ -828,7 +845,7 @@ load_icode(int fd, int argc, char **kargv)
             start += size;
         }
 
-        // (3.5) alloc memory and memset BSS section
+        // (3.5)把段内剩余空间（去掉文件区域之后的）BSS区域以页为单位清空
         end = ph->p_va + ph->p_memsz;
         if (start < la) {
             if (start == end) {
@@ -864,41 +881,47 @@ load_icode(int fd, int argc, char **kargv)
 
     kfree(ph_orig);
 
-    // (4) call mm_map to setup user stack
+    // (4) 用户栈虚拟内存属性设置为可读可写栈
     vm_flags = VM_READ | VM_WRITE | VM_STACK;
+    //mmap在进程虚拟地址空间中为用户站分配一块虚拟内存区域
     if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
         goto bad_cleanup_mmap;
     }
 
+    //用户栈顶实际分配四个物理页，防止栈溢出时缺页异常
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - PGSIZE, PTE_USER) != NULL);
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 2 * PGSIZE, PTE_USER) != NULL);
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 3 * PGSIZE, PTE_USER) != NULL);
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP - 4 * PGSIZE, PTE_USER) != NULL);
 
     // (6) 在用户栈中设置argc和argv
+    //记录argv参数字符串的总长度
     uint32_t argv_size = 0, i;
     for (i = 0; i < argc; i++) {
         argv_size += strnlen(kargv[i], EXEC_MAX_ARG_LEN + 1) + 1;
     }
 
-
+    //参数字符串的起始地址
     uintptr_t stacktop = USTACKTOP - (argv_size / sizeof(long) + 1) * sizeof(long);
 
     char **uargv = (char **)(stacktop - argc * sizeof(char *));
 
     // 设置字符串和argv数组
     argv_size = 0;
+    //遍历所有参数，把argc和argv全都拷贝到用户栈
     for (i = 0; i < argc; i++) {
         // 找到字符串地址对应的内核虚拟地址
+        //计算第i个参数字符串在用户栈中的目标地址
         uintptr_t str_addr = stacktop + argv_size;
         pte_t *pte = get_pte(mm->pgdir, str_addr, 0);
         if (pte == NULL || !(*pte & PTE_V)) {
             ret = -E_INVAL;
             goto bad_cleanup_mmap;
         }
+        //计算对应的虚拟地址
         void *kva_str = page2kva(pte2page(*pte)) + (str_addr & (PGSIZE - 1));
 
-        strcpy((char *)kva_str, kargv[i]);
+        strcpy((char *)kva_str, kargv[i]);//拷贝到用户栈目标位置
 
         // 设置uargv[i]指向字符串
         uintptr_t argv_addr = (uintptr_t)&uargv[i];
@@ -924,19 +947,23 @@ load_icode(int fd, int argc, char **kargv)
     void *kva_argc = page2kva(pte2page(*pte)) + (stacktop & (PGSIZE - 1));
     *(int *)kva_argc = argc;
 
+    //用户栈结构 ：左高右低 ： 用户栈栈顶 -- 一系列参数字符串 -- argv数组 -- argc
 
     // (5) setup current process's mm, pgdir
+    //增加mm的引用计数
     mm_count_inc(mm);
+    //当前进程的mm、页目录物理地址、页表基址寄存器设置好
     current->mm = mm;
     current->pgdir = PADDR(mm->pgdir);
     lsatp(PADDR(mm->pgdir));
 
-    // (7) setup trapframe for user environment
+    // (7) 备份tf
     struct trapframe *tf = current->tf;
     uintptr_t sstatus = tf->status;
     memset(tf, 0, sizeof(struct trapframe));
     tf->gpr.sp = stacktop;
-    tf->epc = elf->e_entry;
+    tf->epc = elf->e_entry;//设置用户程序入口地址
+    //恢复status，但清除前特权级和前中断使能，让用户程序以用户态启动并且中断关闭
     tf->status = sstatus & ~(SSTATUS_SPP | SSTATUS_SPIE);
 
 
