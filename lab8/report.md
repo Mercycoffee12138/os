@@ -7,18 +7,19 @@
 文件读操作的完整调用链如下：
 
 1. **用户态**：
+
    - `read(fd, data, len)` 用户进程发起读请求。
    - 实际调用 `sys_read(fd, data, len)` 进入内核。
-
 2. **系统调用/文件系统抽象层**：
+
    - `sys_read` 解析参数，调用 `sysfile_read(fd, base, len)`。
    - `sysfile_read` 检查参数、分配内核 buffer，循环调用 `file_read` 读取数据。
    - `file_read` 通过 `fd2file` 获取文件结构体，初始化 iobuf，调用 `vop_read(file->node, iob)`。
-
 3. **VFS 层**：
-   - `vop_read` 是一个宏，实际会调用具体文件系统的 `inode_ops->vop_read`，对于 SFS 文件系统就是 `sfs_read`。
 
+   - `vop_read` 是一个宏，实际会调用具体文件系统的 `inode_ops->vop_read`，对于 SFS 文件系统就是 `sfs_read`。
 4. **SFS 文件系统层**：
+
    - `sfs_read` 调用 `sfs_io(node, iob, 0)`，加锁后调用 `sfs_io_nolock` 完成实际读操作。
    - `sfs_io_nolock` 负责分块处理数据，最终通过 `sfs_bmap_load_nolock`、`sfs_rbuf`、`sfs_rblock` 等函数实现磁盘到内存的数据传输。
 
@@ -108,6 +109,8 @@ if ((size = endpos % SFS_BLKSIZE) != 0) {
 - `sfs_bmap_load_nolock()`：根据逻辑块号获取实际物理块号
 - `sfs_buf_op()`：处理部分块的读写（指向 `sfs_rbuf` 或 `sfs_wbuf`）
 - `sfs_block_op()`：批量读写完整块（指向 `sfs_rblock` 或 `sfs_wblock`）
+
+其实就是分三块主要逻辑：对首块不对齐的特殊处理、正常处理后面的nblks的读写、对末块不对齐的处理。其中，对末块不对齐的处理只需要更改alen的增加粒度为endpos%blocksize即可。
 
 ---
 
@@ -226,10 +229,10 @@ if ((ret = load_icode_read(fd, from, ph->p_filesz, ph->p_offset)) != 0) {
 1. 能够看到sh用户shell的执行界面
 2. 能够在sh中执行exit、hello等用户程序
 3. 这些程序都存储在SFS文件系统中的 `disk0/`目录下
-   简单测试了`hello`、`sh`、`sleep`、`divzero`、`exit`效果如下：
+   简单测试了 `hello`、`sh`、`sleep`、`divzero`、`exit`效果如下：
 4. ![image-20260101111415676](C:\Users\13081\AppData\Roaming\Typora\typora-user-images\image-20260101111415676.png)
 
-ps：`error: -16 - no such file or directory`是因为`divzero`我打成了`divezero`，所以没找到对应的程序（英语忘干净了）。
+ps：`error: -16 - no such file or directory`是因为 `divzero`我打成了 `divezero`，所以没找到对应的程序（英语忘干净了）。
 
 ---
 

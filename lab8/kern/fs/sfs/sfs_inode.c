@@ -584,9 +584,11 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
     }
 
     int ret = 0;
+    //size是每次要处理的数据长度，alen是已经读写的数据总长度
     size_t size, alen = 0;
     uint32_t ino;
     uint32_t blkno = offset / SFS_BLKSIZE;          // The NO. of Rd/Wr begin block
+    //本次操作需要操作的块的数量
     uint32_t nblks = endpos / SFS_BLKSIZE - blkno;  // The size of Rd/Wr blocks
 
   //LAB8:EXERCISE1 2311082 HINT: call sfs_bmap_load_nolock, sfs_rbuf, sfs_rblock,etc. read different kind of blocks in file
@@ -600,10 +602,15 @@ sfs_io_nolock(struct sfs_fs *sfs, struct sfs_inode *sin, void *buf, off_t offset
 	 *       NOTICE: useful function: sfs_bmap_load_nolock, sfs_buf_op
 	*/
 
+    //blkoff！=0说明不是块对齐
     blkoff = offset % SFS_BLKSIZE;
     // (1) 处理首块不对齐的情况
     if (blkoff != 0) {
+        //如果本次操作除了首块之外还需要处理完整块（nblks！=0）
+        //就处理到这一块的末尾，也就是处理（blocksize-offset的size大小）
         size = (nblks != 0) ? (SFS_BLKSIZE - blkoff) : (endpos - offset);
+        //sin是inode
+        //拿到这个逻辑块对应的物理磁盘块号放在ino里
         if ((ret = sfs_bmap_load_nolock(sfs, sin, blkno, &ino)) != 0) {
             goto out;
         }
