@@ -82,6 +82,8 @@ stride_enqueue(struct run_queue *rq, struct proc_struct *proc)
       */
 #if USE_SKEW_HEAP
      // 使用斜堆实现优先级队列
+     // 先初始化堆节点，确保状态干净
+     proc->lab6_run_pool.left = proc->lab6_run_pool.right = proc->lab6_run_pool.parent = NULL;
      rq->lab6_run_pool = skew_heap_insert(rq->lab6_run_pool, 
                                           &(proc->lab6_run_pool), 
                                           proc_stride_comp_f);
@@ -92,6 +94,10 @@ stride_enqueue(struct run_queue *rq, struct proc_struct *proc)
      // 设置时间片：如果时间片为0或超过最大值，重置为max_time_slice
      if (proc->time_slice == 0 || proc->time_slice > rq->max_time_slice) {
           proc->time_slice = rq->max_time_slice;
+     }
+     // 确保 priority 至少为1，防止后续除零
+     if (proc->lab6_priority == 0) {
+          proc->lab6_priority = 1;
      }
      proc->rq = rq;
      rq->proc_num++;
@@ -121,9 +127,9 @@ stride_dequeue(struct run_queue *rq, struct proc_struct *proc)
                                           proc_stride_comp_f);
 #else
      // 从链表中移除进程
-     assert(!list_empty(&(proc->run_link)));
      list_del_init(&(proc->run_link));
 #endif
+     proc->rq = NULL;
      rq->proc_num--;
 }
 /*

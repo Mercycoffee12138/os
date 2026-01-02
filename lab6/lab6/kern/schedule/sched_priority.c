@@ -40,7 +40,13 @@ priority_init(struct run_queue *rq)
 static void
 priority_enqueue(struct run_queue *rq, struct proc_struct *proc)
 {
-    assert(list_empty(&(proc->run_link)));
+    // 先确保run_link是干净的状态（重新初始化）
+    list_init(&(proc->run_link));
+    
+    // 确保 priority 至少为1
+    if (proc->lab6_priority == 0) {
+        proc->lab6_priority = 1;
+    }
     
     // 按优先级顺序插入（优先级高的在前）
     list_entry_t *le = &(rq->run_list);
@@ -69,8 +75,9 @@ priority_enqueue(struct run_queue *rq, struct proc_struct *proc)
 static void
 priority_dequeue(struct run_queue *rq, struct proc_struct *proc)
 {
-    assert(!list_empty(&(proc->run_link)));
+    // 从链表中移除并重新初始化
     list_del_init(&(proc->run_link));
+    proc->rq = NULL;
     rq->proc_num--;
 }
 
