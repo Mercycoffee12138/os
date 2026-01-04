@@ -1217,7 +1217,7 @@ int main(void) {
     panic("sched_test FAILED!\n");
   800778:	00000617          	auipc	a2,0x0
   80077c:	66060613          	addi	a2,a2,1632 # 800dd8 <error_string+0x3c0>
-  800780:	05e00593          	li	a1,94
+  800780:	05f00593          	li	a1,95
   800784:	00000517          	auipc	a0,0x0
   800788:	66c50513          	addi	a0,a0,1644 # 800df0 <error_string+0x3d8>
   80078c:	89bff0ef          	jal	ra,800026 <__panic>

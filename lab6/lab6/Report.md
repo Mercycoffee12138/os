@@ -1,6 +1,6 @@
 # 练习1：理解调度器框架的实现
 
-📋 本练习关注“调度器框架如何与具体调度算法解耦”，以及一次完整调度发生时，各模块的调用关系。
+本练习关注“调度器框架如何与具体调度算法解耦”，以及一次完整调度发生时，各模块的调用关系。
 
 ## 1) 调度类的初始化流程
 
@@ -66,7 +66,7 @@
 
 # 练习2：实现 Round Robin（RR）调度算法
 
-⚠️ 本练习的关键点在于：RR 是“抢占式”的时间片轮转，因此必须依赖时钟中断与 `need_resched` 机制才能工作。
+本练习的关键点在于：RR 是“抢占式”的时间片轮转，因此必须依赖时钟中断与 `need_resched` 机制才能工作。
 
 ## 1) 对比 Lab5 与 Lab6：同名函数为何必须改
 
@@ -235,6 +235,7 @@ Stride 的核心是给每个进程维护一个 `stride`（可理解为“已经�
 ## 1.RR调度器
 
 ```powershell
+第一次测试结果
 ========================================
   Scheduling Algorithm Test Program
   LAB6 CHALLENGE 2: 2310137
@@ -286,6 +287,51 @@ ID  Priority  Workload  Turnaround
 Average Turnaround Time: 2 ms
 Total Execution Time: 60 ms
 
+第二次测试结果 
+========================================
+  Scheduling Algorithm Test
+  LAB6 CHALLENGE 2: 2310137
+========================================
+
+set priority to 6
+main: fork ok, waiting for children...
+set priority to 1
+set priority to 2
+set priority to 3
+set priority to 4
+set priority to 5
+100 ticks
+child pid 3, priority 1, acc 516000, time 1010
+child pid 4, priority 2, acc 492000, time 1010
+child pid 5, priority 3, acc 504000, time 1010
+child pid 6, priority 4, acc 500000, time 1020
+child pid 7, priority 5, acc 484000, time 1020
+main: pid 0 done, acc 516000
+main: pid 4 done, acc 492000
+main: pid 5 done, acc 504000
+main: pid 6 done, acc 500000
+main: pid 7 done, acc 484000
+
+========================================
+  Results (acc values):
+========================================
+Priority 1 (lowest): 516000
+Priority 2:          492000
+Priority 3:          504000
+Priority 4:          500000
+Priority 5 (highest):484000
+
+Expected behavior:
+- RR: All acc values similar (fair sharing)
+- Stride: Higher priority = higher acc (proportional)
+- FIFO: Similar acc (FIFO order)
+- Priority: Higher priority = higher acc
+
+sched_test passed.
+all user-mode processes have quit.
+init check memory pass.
+kernel panic at kern/process/proc.c:547:
+    initproc exit.
 ```
 
 ## 2.Stride调度器
@@ -346,6 +392,7 @@ kernel panic at kern/process/proc.c:547:
 ## 3.FIFO调度器
 
 ```powershell
+第一次测试结果
 ========================================
   Scheduling Algorithm Test Program
   LAB6 CHALLENGE 2: 2310137
@@ -397,6 +444,53 @@ ID  Priority  Workload  Turnaround
 Average Turnaround Time: 2 ms
 Total Execution Time: 70 ms
 
+第二次测试结果
+
+========================================
+  Scheduling Algorithm Test
+  LAB6 CHALLENGE 2: 2310137
+========================================
+
+set priority to 6
+main: fork ok, waiting for children...
+set priority to 1
+100 ticks
+set priority to 2
+child pid 4, priority 2, acc 20000, time 1010
+set priority to 3
+child pid 5, priority 3, acc 4000, time 1010
+set priority to 4
+child pid 6, priority 4, acc 4000, time 1020
+set priority to 5
+child pid 7, priority 5, acc 4000, time 1020
+child pid 3, priority 1, acc 1908000, time 1020
+main: pid 0 done, acc 1908000
+main: pid 4 done, acc 20000
+main: pid 5 done, acc 4000
+main: pid 6 done, acc 4000
+main: pid 7 done, acc 4000
+
+========================================
+  Results (acc values):
+========================================
+Priority 1 (lowest): 1908000
+Priority 2:          20000
+Priority 3:          4000
+Priority 4:          4000
+Priority 5 (highest):4000
+
+Expected behavior:
+- RR: All acc values similar (fair sharing)
+- Stride: Higher priority = higher acc (proportional)
+- FIFO: Similar acc (FIFO order)
+- Priority: Higher priority = higher acc
+
+sched_test passed.
+all user-mode processes have quit.
+init check memory pass.
+kernel panic at kern/process/proc.c:547:
+    initproc exit.
+
 ```
 
 
@@ -406,6 +500,7 @@ Total Execution Time: 70 ms
 ## 4.优先级调度器
 
 ```powershell
+第一次测试结果
 ========================================
   Scheduling Algorithm Test Program
   LAB6 CHALLENGE 2: 2310137
@@ -456,6 +551,52 @@ ID  Priority  Workload  Turnaround
 
 Average Turnaround Time: -2 ms
 Total Execution Time: 70 ms
+
+第二次测试结果
+========================================
+  Scheduling Algorithm Test
+  LAB6 CHALLENGE 2: 2310137
+========================================
+
+set priority to 6
+main: fork ok, waiting for children...
+set priority to 1
+set priority to 2
+100 ticks
+child pid 4, priority 2, acc 1820000, time 1010
+set priority to 3
+child pid 5, priority 3, acc 4000, time 1010
+set priority to 4
+child pid 6, priority 4, acc 4000, time 1020
+set priority to 5
+child pid 7, priority 5, acc 4000, time 1030
+child pid 3, priority 1, acc 88000, time 1030
+main: pid 0 done, acc 88000
+main: pid 4 done, acc 1820000
+main: pid 5 done, acc 4000
+main: pid 6 done, acc 4000
+main: pid 7 done, acc 4000
+
+========================================
+  Results (acc values):
+========================================
+Priority 1 (lowest): 88000
+Priority 2:          1820000
+Priority 3:          4000
+Priority 4:          4000
+Priority 5 (highest):4000
+
+Expected behavior:
+- RR: All acc values similar (fair sharing)
+- Stride: Higher priority = higher acc (proportional)
+- FIFO: Similar acc (FIFO order)
+- Priority: Higher priority = higher acc
+
+sched_test passed.
+all user-mode processes have quit.
+init check memory pass.
+kernel panic at kern/process/proc.c:547:
+    initproc exit.
 ```
 
 

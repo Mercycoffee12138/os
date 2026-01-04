@@ -42,6 +42,7 @@ int main(void) {
             
             int time;
             while (1) {
+                ////纯CPU盲等，不发生阻塞I/O
                 spin_delay();
                 ++acc[i];
                 if (acc[i] % 4000 == 0) {
