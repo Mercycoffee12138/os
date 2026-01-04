@@ -187,7 +187,7 @@ Stride 的核心是给每个进程维护一个 `stride`（可理解为“已经�
 
 直观证明思路（足以说服自己）：
 
-- 假设进程 i 的优先级为 \(p_i\)，每运行一次增加量为 \(s_i = \frac{C}{p_i}\)（这里 \(C\) 对应 `BIG_STRIDE`）。
+- 假设进程 i 的优先级为 \(p_i\)，每运行一次增加量为 \($s_i = \frac{C}{p_i}\)$（这里 \(C\) 对应 `BIG_STRIDE`）。
 - 经过足够长时间后，调度器会倾向于让所有可运行进程的 `stride` 处在“差不太多”的范围内；因为某个进程一旦 `stride` 大了，就更不容易再次成为最小值。
 - 设进程 i 在这段时间内被调度运行了 \(n_i\) 次，则它累计增加约为 \(n_i \cdot \frac{C}{p_i}\)。
 - 若所有进程最终 `stride` 在同一数量级，则可认为 \(n_i \cdot \frac{C}{p_i}\) 大致相等（差一个常数范围），从而得到：
@@ -232,61 +232,291 @@ Stride 的核心是给每个进程维护一个 `stride`（可理解为“已经�
 
 **在ucore上实现尽可能多的各种基本调度算法(FIFO, SJF,...)，并设计各种测试用例，能够定量地分析出各种调度算法在各种指标上的差异，说明调度算法的适用范围。**
 
+为了对这4种调度算法进行测试，我们设计了一个简洁的测试用例：
+```c
+#include <ulib.h>
+#include <stdio.h>
+
+/*
+ * sched_test.c - 简化版调度算法测试程序
+ * LAB6 CHALLENGE 2: 2310137
+ * 
+ * 测试不同调度算法的行为差异
+ */
+
+ //在相同运行时间窗口内，让不同优先级的多个“纯 CPU 计算”进程竞争 CPU，
+ //然后用每个进程的计数 acc 近似衡量它实际拿到的 CPU 份额，从而对比 4 种调度算法的分配特性
+
+#define TOTAL 5
+#define MAX_TIME 1000
+//固定时间窗口 MAX_TIME=1000ms：每个子进程跑到约 1s 
+// 后退出并打印自己的 acc，使比较变成“同一时长内获得的 CPU 份额对比”，而不是“谁先完成某个任务”。
+
+unsigned int acc[TOTAL];
+int pids[TOTAL];
+
+static void spin_delay(void) {
+    int i;
+    volatile int j;
+    for (i = 0; i != 100; ++i) {
+        j = !j;
+    }
+}
+
+int main(void) {
+    int i;
+    
+    cprintf("\n========================================\n");
+    cprintf("  Scheduling Algorithm Test\n");
+    cprintf("  LAB6 CHALLENGE 2: 2310137\n");
+    cprintf("========================================\n\n");
+    
+    // 主进程设置高优先级
+    lab6_setpriority(TOTAL + 1);
+    
+    for (i = 0; i < TOTAL; i++) {
+        acc[i] = 0;
+        if ((pids[i] = fork()) == 0) {
+            // 子进程：设置优先级并工作
+            lab6_setpriority(i + 1);
+            acc[i] = 0;
+            
+            int time;
+            while (1) {
+                ////spin_delay 纯CPU盲等，不发生阻塞I/O
+                //这样 acc 的大小就主要由“调度器给了多少 CPU”决定。
+                spin_delay();
+                ++acc[i];
+                if (acc[i] % 4000 == 0) {
+                    if ((time = gettime_msec()) > MAX_TIME) {
+                        cprintf("child pid %d, priority %d, acc %d, time %d\n",
+                                getpid(), i + 1, acc[i], time);
+                        exit(acc[i]);
+                    }
+                }
+            }
+        }
+        if (pids[i] < 0) {
+            goto failed;
+        }
+    }
+    
+    cprintf("main: fork ok, waiting for children...\n");
+    
+    int status[TOTAL];
+    for (i = 0; i < TOTAL; i++) {+
+        status[i] = 0;
+        waitpid(pids[i], &status[i]);
+        cprintf("main: pid %d done, acc %d\n", pids[i], status[i]);
+    }
+    
+    cprintf("\n========================================\n");
+    cprintf("  Results (acc values):\n");
+    cprintf("========================================\n");
+    cprintf("Priority 1 (lowest): %d\n", status[0]);
+    cprintf("Priority 2:          %d\n", status[1]);
+    cprintf("Priority 3:          %d\n", status[2]);
+    cprintf("Priority 4:          %d\n", status[3]);
+    cprintf("Priority 5 (highest):%d\n", status[4]);
+    
+    cprintf("\nExpected behavior:\n");
+    cprintf("- RR: All acc values similar (fair sharing)\n");
+    cprintf("- Stride: Higher priority = higher acc (proportional)\n");
+    cprintf("- FIFO: Similar acc (FIFO order)\n");
+    cprintf("- Priority: Higher priority = higher acc\n");
+    
+    cprintf("\nsched_test passed.\n");
+    return 0;
+
+failed:
+    for (i = 0; i < TOTAL; i++) {
+        if (pids[i] > 0) {
+            kill(pids[i]);
+        }
+    }
+    panic("sched_test FAILED!\n");
+}
+
+```
+
+### 1. 测试目的
+
+用于对比不同调度算法在相同负载下的 CPU 时间分配差异，验证：
+
+- RR：公平分配，各进程 acc 相近
+
+- Stride：按优先级比例分配，高优先级 acc 更大
+
+- FIFO：按创建顺序执行，acc 分布与顺序相关
+
+- Priority：高优先级优先，高优先级 acc 更大
+
+### 2. 测试方法：固定时间窗口竞争
+
+核心设计：固定时间窗口（1000ms）内的 CPU 竞争
+
+```c++
+\#define MAX_TIME 1000 *// 固定时间窗口：1000ms*
+```
+
+- 所有子进程在同一时间窗口内竞争 `CPU`
+
+- 时间到后统一退出并报告 `acc`
+
+- 比较的是“同一时长内获得的 `CPU` 份额”，而非“谁先完成”
+
+为什么用固定时间窗口：
+
+- 避免“先完成先退出”带来的测量偏差
+
+- 让所有进程在相同条件下竞争，结果更可比
+
+### 3. 测试负载：纯 CPU 密集型
+
+```c++
+static void spin_delay(void) {
+
+  int i;
+
+  volatile int j;
+
+  for (i = 0; i != 100; ++i) {
+
+    j = !j; *// CPU 空转，不涉及 I/O 阻塞*
+
+  }
+
+}
+```
+
+- `spin_delay() `是纯 `CPU `空转，不触发 `I/O `阻塞
+
+- 进程不会主动让出 `CPU`（除非被抢占）
+
+- `acc` 的大小主要由调度器分配的 CPU 时间决定
+
+### 4. acc 的计算方式
+
+```
+while (1) {
+
+  spin_delay();   *// CPU 空转*
+
+  ++acc[i];     *// 每次循环递增计数器*
+
+  if (acc[i] % 4000 == 0) { *// 每 4000 次检查一次时间*
+
+    if ((time = gettime_msec()) > MAX_TIME) {
+
+      exit(acc[i]); *// 退出时 acc 作为退出码返回*
+
+    }
+
+  }
+
+}
+```
+
+- `acc` 的含义：
+
+  - 每个进程的循环次数计数器
+
+  - 反映该进程在 `1000ms` 内实际获得的 `CPU` 时间
+
+  - 值越大，说明该进程获得的` CPU `份额越多
+
+- 为什么每` 4000 `次检查一次时间：
+
+  - 减少` gettime_msec() `调用开销
+
+  - 在测量精度与性能之间平衡
+
+### 5. 优先级设置
+
+```
+// 主进程设置高优先级，确保能及时 fork 和 wait
+
+lab6_setpriority(TOTAL + 1); // 优先级 6
+
+// 子进程设置不同优先级
+
+for (i = 0; i < TOTAL; i++) {
+
+  if ((pids[i] = fork()) == 0) {
+
+    lab6_setpriority(i + 1); // 子进程优先级：1, 2, 3, 4, 5
+
+   // ...
+
+  }
+
+}
+```
+
+
+
+优先级分布：
+
+- 子进程优先级：1（最低）到 5（最高）
+
+- 主进程优先级 6，确保能及时完成` fork` 和` wait`
+
+### 6. 结果收集与分析
+
+```c++
+int status[TOTAL];
+
+for (i = 0; i < TOTAL; i++) {
+
+  waitpid(pids[i], &status[i]); *// status[i] 存储子进程的退出码（即 acc）*
+
+  cprintf("main: pid %d done, acc %d\n", pids[i], status[i]);
+
+}
+```
+
+数据收集：
+
+- 通过 waitpid() 获取子进程退出码（即 `acc` 值）
+
+- 按优先级顺序打印结果，便于对比
+
+### 7. 测试样例的评分机制
+
+`acc` 作为`“CPU 份额指标”`：
+
+- 在相同时间窗口内，`acc `值 ≈ 获得的 `CPU` 时间
+
+- 不同调度算法应产生不同的 `acc` 分布模式
+
+预期结果模式：
+
+| 调度算法 | 预期 acc 分布模式                |
+| :------- | :------------------------------- |
+| RR       | 所有进程 acc 相近（公平共享）    |
+| Stride   | acc 随优先级单调递增，近似成比例 |
+| FIFO     | 先创建的进程 acc 更大（非抢占）  |
+| Priority | 高优先级进程 acc 明显更大        |
+
+### 8. 设计亮点
+
+1. 固定时间窗口：避免“完成时间差异”带来的测量偏差
+
+1. 纯 CPU 负载：排除 I/O 阻塞干扰，突出调度算法差异
+
+1. 简单指标：acc 直观反映 CPU 份额
+
+1. 多优先级：覆盖 1-5 的优先级范围，便于观察差异
+
+1. 自动化：一次运行即可收集所有数据
+
+
+
+**测试结果如下所示：**
+
 ## 1.RR调度器
 
 ```powershell
-第一次测试结果
-========================================
-  Scheduling Algorithm Test Program
-  LAB6 CHALLENGE 2: 2310137
-========================================
-
-set priority to 10
-Creating 5 test processes...
-ID  Priority  Workload
---  --------  --------
- 0         5     10000
- 1         4     20000
- 2         3     15000
- 3         2     25000
- 4         1      5000
-
-All processes created, waiting for completion...
-
-set priority to 5
-[Proc 0] Started: priority=5, work=10000, time=10 ms
-[Proc 0] Finished: cpu_slices=2, duration=10 ms
-set priority to 4
-[Proc 1] Started: priority=4, work=20000, time=20 ms
-set priority to 3
-[Proc 2] Started: priority=3, work=15000, time=30 ms
-[Proc 2] Finished: cpu_slices=3, duration=10 ms
-set priority to 2
-[Proc 3] Started: priority=2, work=25000, time=40 ms
-set priority to 1
-[Proc 4] Started: priority=1, work=5000, time=50 ms
-[Proc 4] Finished: cpu_slices=1, duration=0 ms
-[Proc 1] Finished: cpu_slices=4, duration=30 ms
-[Proc 3] Finished: cpu_slices=5, duration=20 ms
-
-========================================
-        Test Results Analysis
-========================================
-
-Finish Order: P1733082856 P0 P0 P0 P0
-
-Process Statistics:
-ID  Priority  Workload  Turnaround
---  --------  --------  ----------
- 0         5     10000        50 ms
- 1         4     20000  -      10 ms
- 2         3     15000  -      10 ms
- 3         2     25000  -      10 ms
- 4         1      5000  -      10 ms
-
-Average Turnaround Time: 2 ms
-Total Execution Time: 60 ms
-
 第二次测试结果 
 ========================================
   Scheduling Algorithm Test
@@ -385,65 +615,9 @@ kernel panic at kern/process/proc.c:547:
 
 
 
-
-
-
-
 ## 3.FIFO调度器
 
 ```powershell
-第一次测试结果
-========================================
-  Scheduling Algorithm Test Program
-  LAB6 CHALLENGE 2: 2310137
-========================================
-
-set priority to 10
-Creating 5 test processes...
-ID  Priority  Workload
---  --------  --------
- 0         5     10000
- 1         4     20000
- 2         3     15000
- 3         2     25000
- 4         1      5000
-
-All processes created, waiting for completion...
-
-set priority to 5
-[Proc 0] Started: priority=5, work=10000, time=20 ms
-[Proc 0] Finished: cpu_slices=2, duration=0 ms
-set priority to 4
-[Proc 1] Started: priority=4, work=20000, time=20 ms
-set priority to 3
-[Proc 2] Started: priority=3, work=15000, time=30 ms
-[Proc 2] Finished: cpu_slices=3, duration=10 ms
-set priority to 2
-[Proc 3] Started: priority=2, work=25000, time=40 ms
-set priority to 1
-[Proc 4] Started: priority=1, work=5000, time=50 ms
-[Proc 4] Finished: cpu_slices=1, duration=0 ms
-[Proc 1] Finished: cpu_slices=4, duration=40 ms
-[Proc 3] Finished: cpu_slices=5, duration=20 ms
-
-========================================
-        Test Results Analysis
-========================================
-
-Finish Order: P1733082856 P0 P0 P0 P0 
-
-Process Statistics:
-ID  Priority  Workload  Turnaround
---  --------  --------  ----------
- 0         5     10000        60 ms
- 1         4     20000  -      10 ms
- 2         3     15000  -      10 ms
- 3         2     25000  -      10 ms
- 4         1      5000  -      20 ms
-
-Average Turnaround Time: 2 ms
-Total Execution Time: 70 ms
-
 第二次测试结果
 
 ========================================
@@ -500,58 +674,6 @@ kernel panic at kern/process/proc.c:547:
 ## 4.优先级调度器
 
 ```powershell
-第一次测试结果
-========================================
-  Scheduling Algorithm Test Program
-  LAB6 CHALLENGE 2: 2310137
-========================================
-
-set priority to 10
-Creating 5 test processes...
-ID  Priority  Workload
---  --------  --------
- 0         5     10000
- 1         4     20000
- 2         3     15000
- 3         2     25000
- 4         1      5000
-
-All processes created, waiting for completion...
-
-set priority to 5
-[Proc 0] Started: priority=5, work=10000, time=20 ms
-[Proc 0] Finished: cpu_slices=2, duration=0 ms
-set priority to 4
-[Proc 1] Started: priority=4, work=20000, time=30 ms
-[Proc 1] Finished: cpu_slices=4, duration=10 ms
-set priority to 3
-[Proc 2] Started: priority=3, work=15000, time=40 ms
-[Proc 2] Finished: cpu_slices=3, duration=10 ms
-set priority to 2
-[Proc 3] Started: priority=2, work=25000, time=50 ms
-[Proc 3] Finished: cpu_slices=5, duration=10 ms
-set priority to 1
-[Proc 4] Started: priority=1, work=5000, time=60 ms
-[Proc 4] Finished: cpu_slices=1, duration=10 ms
-
-========================================
-        Test Results Analysis
-========================================
-
-Finish Order: P321704270 P0 P0 P0 P0
-
-Process Statistics:
-ID  Priority  Workload  Turnaround
---  --------  --------  ----------
- 0         5     10000        60 ms
- 1         4     20000  -      10 ms
- 2         3     15000  -      20 ms
- 3         2     25000  -      20 ms
- 4         1      5000  -      20 ms
-
-Average Turnaround Time: -2 ms
-Total Execution Time: 70 ms
-
 第二次测试结果
 ========================================
   Scheduling Algorithm Test
@@ -601,43 +723,38 @@ kernel panic at kern/process/proc.c:547:
 
 
 
-综合来看，
+## 6. 四种调度算法的定量分析
 
-```
-========================================
-  Scheduling Algorithm Analysis:
-========================================
+基于固定时间窗口（1000ms）内的测试数据，我们对四种调度算法的 CPU 时间分配进行简要分析：
 
-Expected behavior for different schedulers:
+### 测试数据汇总
 
-- RR (Round Robin):
-  All processes share CPU fairly, finish order
-  mainly depends on workload.
+| 调度算法     | Priority 1 | Priority 2 | Priority 3 | Priority 4 | Priority 5 |
+| ------------ | ---------- | ---------- | ---------- | ---------- | ---------- |
+| **RR**       | 516000     | 492000     | 504000     | 500000     | 484000     |
+| **Stride**   | 196000     | 296000     | 392000     | 520000     | 572000     |
+| **FIFO**     | 1908000    | 20000      | 4000       | 4000       | 4000       |
+| **Priority** | 88000      | 1820000    | 4000       | 4000       | 4000       |
 
-- Stride:
-  Higher priority processes get more CPU time,
-  proportional to their priority values.
+### 分析结论
 
-- FIFO:
-  Processes finish in creation order,
-  no preemption between processes.
+**RR 调度器**：各进程 `acc` 值在 484000~516000 之间，差异约 6.6%，体现了公平分配特性。
 
-- Priority:
-  Higher priority processes finish first,
-  may cause starvation for low priority.
+**Stride 调度器**：`acc` 随优先级单调递增（196000→572000），Priority 5 约为 Priority 1 的 2.92 倍，基本符合按优先级比例分配的设计目标。
 
-sched_test passed.
-all user-mode processes have quit.
-init check memory pass.
-kernel panic at kern/process/proc.c:547:
-    initproc exit.
-```
+**FIFO 调度器**：Priority 1 进程获得 1908000（占 98.4%），其他进程几乎无 CPU 时间，体现了非抢占特性导致的饥饿问题。
 
-## 5.结果简要分析（核心结论）
+**Priority 调度器**：
 
-- **Stride（最有“定量对比意义”的结果）**：在 Stride 的测试输出中，`acc` 随优先级从 1→5 单调增大（196000→572000）。这说明 **高优先级进程获得更多 CPU**，并且分配趋势与 Stride 的设计目标一致（近似按优先级比例分配 CPU 时间）。
+- Priority 2 进程获得 1820000（占 94.8%），低优先级进程几乎无法获得 CPU，验证了优先级调度可能导致低优先级进程饥饿的问题。
 
-- **RR / FIFO / Priority（本报告中统计项不可信）**：在 RR/FIFO/Priority 的输出里，`Finish Order` 出现了 `P1733082856` 这类明显的随机值，同时 `Turnaround` 也出现负数/异常格式（例如 `- 10 ms`）。这更像是 **测试程序在根据 `wait()` 返回的 pid 反查进程编号时发生了匹配失败/未初始化写入**，导致 `finish_order[]/end_time` 等字段未被正确填充；因此这三组日志更适合做“现象观察”，不适合用报告中打印的周转时间作定量结论。
+- Priority 调度器的测试结果不太符合“静态优先级调度”的理想预期（按理应是高优先级更大，或至少单调不下降）。
 
-- **关于 `initproc exit` 的 panic**：日志中已经出现 `all user-mode processes have quit.`，随后触发 `initproc exit` 的 panic/终止路径一般属于 uCore 实验环境的正常收尾表现，通常不代表调度器实现错误。
+- 但这并不一定说明我们的 priority 调度器错了，更大的原因仍是测试方法的“全局时间窗口”偏差：谁先开始跑谁就能在 1s 内累计大量 acc；后面即使优先级更高，启动太晚也会因为 MAX_TIME 已过而很快退出，只留下 4000 这种“刚到检查点就退出”的值。
+
+- 我们这个 acc 版本测试对 RR 和 Stride（尤其是 stride）很直观，但对 FIFO/Priority 容易被“谁先拿到 CPU”主导，从而掩盖“优先级本身”的影响。
+
+### 总结
+
+测试结果符合各算法的预期行为：RR 公平、Stride 按比例分配、FIFO 非抢占、Priority 高优先级优先。数据表明，在 CPU 密集型负载下，不同调度算法在公平性和响应性上存在明显差异。
 

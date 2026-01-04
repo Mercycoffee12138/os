@@ -15,7 +15,7 @@
  *   2 - FIFO 先来先服务
  *   3 - Priority 优先级调度
  */
-#define SCHED_ALGORITHM 3 // 默认使用Stride调度器（make grade 需要）
+#define SCHED_ALGORITHM 0 // 默认使用Stride调度器（make grade 需要）
 
 // the list of timer
 static list_entry_t timer_list;

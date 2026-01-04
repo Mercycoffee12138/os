@@ -8,8 +8,13 @@
  * 测试不同调度算法的行为差异
  */
 
+ //在相同运行时间窗口内，让不同优先级的多个“纯 CPU 计算”进程竞争 CPU，
+ //然后用每个进程的计数 acc 近似衡量它实际拿到的 CPU 份额，从而对比 4 种调度算法的分配特性
+
 #define TOTAL 5
 #define MAX_TIME 1000
+//固定时间窗口 MAX_TIME=1000ms：每个子进程跑到约 1s 
+// 后退出并打印自己的 acc，使比较变成“同一时长内获得的 CPU 份额对比”，而不是“谁先完成某个任务”。
 
 unsigned int acc[TOTAL];
 int pids[TOTAL];
@@ -42,7 +47,8 @@ int main(void) {
             
             int time;
             while (1) {
-                ////纯CPU盲等，不发生阻塞I/O
+                ////spin_delay 纯CPU盲等，不发生阻塞I/O
+                //这样 acc 的大小就主要由“调度器给了多少 CPU”决定。
                 spin_delay();
                 ++acc[i];
                 if (acc[i] % 4000 == 0) {
@@ -62,7 +68,7 @@ int main(void) {
     cprintf("main: fork ok, waiting for children...\n");
     
     int status[TOTAL];
-    for (i = 0; i < TOTAL; i++) {
+    for (i = 0; i < TOTAL; i++) {+
         status[i] = 0;
         waitpid(pids[i], &status[i]);
         cprintf("main: pid %d done, acc %d\n", pids[i], status[i]);
